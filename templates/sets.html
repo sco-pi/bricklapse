@@ -1,0 +1,169 @@
+<html>
+    <head>
+        <title>Sets</title>
+    </head>
+    <body>
+        <h1><a href="/">Lego Timelapse</a> - Sets</h1>
+        <div id="sets"></div>
+        <br />
+        <input type="text" id="setId" placeholder="Set ID" />
+        <input type="text" id="setName" placeholder="Set Name" />
+        <button id="addSet">Add Set</button>
+        <button id="saveSets">Save</button>
+    </body>
+    <script type="text/javascript">
+        fetch('/api/sets').then(response => response.json()).then(data => {
+            var sets = data['sets'];
+            var sets_div = document.getElementById('sets');
+            sets.forEach(set => {
+                var set_div = document.createElement('div');
+                set_div.innerHTML = `<h2>${set['name']} (${set['id']})</h2>`;
+                var instructions_div = document.createElement('div');
+                set['instructions'].forEach(instruction => {
+                    var instruction_div = document.createElement('div');
+                    instruction_div.innerHTML = `<a href="/instructions/${set['id']}/${instruction}">${instruction}</a>&nbsp;&nbsp;`;
+                    instructions_div.appendChild(instruction_div);
+                });
+                set_div.appendChild(instructions_div);
+                // Add a button to add an instruction
+                var add_instruction_button = document.createElement('button');
+                add_instruction_button.textContent = 'Add Instruction';
+                add_instruction_button.onclick = () => {
+                    // Prompt the user for the instruction file, upload it to the server, and add it to
+                    // the set using the file name as the instruction name
+                    var file_input = document.createElement('input');
+                    file_input.type = 'file';
+                    file_input.onchange = () => {
+                        var file = file_input.files[0];
+                        var formData = new FormData();
+                        formData.append('pdf', file);
+
+                        fetch(`/instructions/${set['id']}`, {
+                            method: 'POST',
+                            body: formData
+                        })
+                        .then(response => {
+                            if (!response.ok) {
+                                throw new Error('Network response was not ok');
+                            }
+                            return response.json();
+                        })
+                        .then(data => {
+                            console.log('Success:', data);
+                            // Get the instruction name from the file name, stripping the extension
+                            filename = file.name.split('.').slice(0, -1).join('.');
+                            // Add the instruction to the set
+                            set['instructions'].push( filename );
+                            var instruction_div = document.createElement('div');
+                            instruction_div.innerHTML = `<a href="/instructions/${set['id']}/${filename}">${filename}</a>&nbsp;&nbsp;`;
+                            instructions_div.appendChild(instruction_div);
+                        })
+                        .catch(error => {
+                            console.error('Error:', error);
+                            alert('Upload failed');
+                        });
+                    };
+                    file_input.click();
+                };
+                set_div.appendChild(add_instruction_button);
+                // Add a button to delete the set
+                var delete_button = document.createElement('button');
+                delete_button.textContent = 'Delete Set';
+                delete_button.onclick = () => {
+                    fetch(`/api/sets/${set['id']}`, {
+                        method: 'DELETE'
+                    }).then(() => {
+                        set_div.remove();
+                    });
+                };
+                set_div.appendChild(delete_button);
+                sets_div.appendChild(set_div);
+            });
+        });
+
+        // Add a set
+        document.getElementById('addSet').onclick = () => {
+            var setId = document.getElementById('setId').value;
+            var setName = document.getElementById('setName').value;
+            fetch('/api/sets', {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json'
+                },
+                body: JSON.stringify({
+                    id: setId,
+                    name: setName,
+                    instructions: []
+                })
+            }).then(response => {
+                if (!response.ok) {
+                    throw new Error('Network response was not ok');
+                }
+                return response.json();
+            }).then(data => {
+                console.log('Success:', data);
+                var sets_div = document.getElementById('sets');
+                var set_div = document.createElement('div');
+                set_div.innerHTML = `<h2>${setName} (${setId})</h2>`;
+                var instructions_div = document.createElement('div');
+                set_div.appendChild(instructions_div);
+                // Add a button to add an instruction
+                var add_instruction_button = document.createElement('button');
+                add_instruction_button.textContent = 'Add Instruction';
+                add_instruction_button.onclick = () => {
+                    // Prompt the user for the instruction file, upload it to the server, and add it to
+                    // the set using the file name as the instruction name
+                    var file_input = document.createElement('input');
+                    file_input.type = 'file';
+                    file_input.onchange = () => {
+                        var file = file_input.files[0];
+                        var formData = new FormData();
+                        formData.append('pdf', file);
+
+                        fetch(`/instructions/${setId}`, {
+                            method: 'POST',
+                            body: formData
+                        })
+                        .then(response => {
+                            if (!response.ok) {
+                                throw new Error('Network response was not ok');
+                            }
+                            return response.json();
+                        })
+                        .then(data => {
+                            console.log('Success:', data);
+                            // Get the instruction name from the file name, stripping the extension
+                            filename = file.name.split('.').slice(0, -1).join('.');
+                            // Add the instruction to the set
+                            data['instructions'].push( filename );
+                            var instruction_div = document.createElement('div');
+                            instruction_div.innerHTML = `<a href="/instructions/${setId}/${filename}">${filename}</a>&nbsp;&nbsp;`;
+                            instructions_div.appendChild(instruction_div);
+                        })
+                        .catch(error => {
+                            console.error('Error:', error);
+                            alert('Upload failed');
+                        });
+                    };
+                    file_input.click();
+                };
+                set_div.appendChild(add_instruction_button);
+                // Add a button to delete the set
+                var delete_button = document.createElement('button');
+                delete_button.textContent = 'Delete Set';
+                delete_button.onclick = () => {
+                    fetch(`/api/sets/${setId}`, {
+                        method: 'DELETE'
+                    }).then(() => {
+                        set_div.remove();
+                    });
+                };
+                set_div.appendChild(delete_button);
+                sets_div.appendChild(set_div);
+            }).catch(error => {
+                console.error('Error:', error);
+                alert('Add set failed');
+            });
+        };
+    </script>
+</html>

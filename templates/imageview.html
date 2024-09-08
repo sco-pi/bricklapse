@@ -1,0 +1,96 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Lego Timelapse Image Viewer</title>
+  <!-- Bootstrap CSS -->
+  <link href="https://stackpath.bootstrapcdn.com/bootstrap/4.5.2/css/bootstrap.min.css" rel="stylesheet">
+  <script src="https://mozilla.github.io/pdf.js/build/pdf.mjs" type="module"></script>
+</head>
+<body>
+
+<div class="container-fluid">
+  <div class="row">
+    <div class="col">
+      <h1><a href="/">Lego Timelapse</a> - Image Viewer</h1>
+    </div>
+  </div>
+  <div class="row">
+    <div class="col">
+      <!-- Drop Down for Set selection -->
+      Set <select id="set_select">
+        <option>Select Set</option>
+      </select>
+      <!-- Drop Down for Phase selection -->
+      Phase <select id="phase_select">
+        <option>Select Phase</option>
+        <option value="sort">Sort</option>
+        <option value="build">Build</option>
+        <option value="disassemble">Disassemble</option>
+      </select>
+      <!-- Button to get images -->
+      <button id="get_images" class="btn btn-primary">Get Images</button>
+    </div>
+  </div>
+  <!-- Grid of images -->
+  <div class="row">
+    <div class="col" id="images">
+    </div>
+  </div>
+<div>
+
+<!-- Bootstrap JS -->
+<script src="https://code.jquery.com/jquery-3.5.1.slim.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/@popperjs/core@2.5.3/dist/umd/popper.min.js"></script>
+<script src="https://stackpath.bootstrapcdn.com/bootstrap/4.5.2/js/bootstrap.min.js"></script>
+
+<script type="module">
+  // Get set's from the server to populate the set_select dropdown
+  fetch('api/sets/').then(response => response.json()).then(data => {
+    var sets = data['sets'];
+    var set_select = document.getElementById('set_select');
+    sets.forEach(this_set => {
+      var option = document.createElement('option');
+      option.value = this_set['id'];
+      option.text = this_set['name'] + ' (' + this_set['id'] + ')';
+      set_select.appendChild(option);
+    });
+  });
+
+  // Get images for the selected set and phase
+  document.getElementById('get_images').addEventListener('click', function() {
+    var set_id = document.getElementById('set_select').value;
+    var phase = document.getElementById('phase_select').value;
+    var images_div = document.getElementById('images');
+    images_div.innerHTML = '';
+    fetch('/api/images/' + set_id + '/' + phase + '?date=' + Date.now()).then(response => response.json()).then(data => {
+      data.forEach(image => {
+        // Create thumbnail div for each image
+        var thumbnail_div = document.createElement('div');
+        thumbnail_div.classList.add('img-thumbnail');
+        thumbnail_div.style = 'display: inline-block; margin: 5px;';
+
+        var img = document.createElement('img');
+        img.src = image['url'];
+        img.style = 'max-width: 200px;';
+        //img.classList.add('img-rounded');
+        //img.classList.add('img-fluid');
+        thumbnail_div.appendChild(img);
+        
+        var caption_div = document.createElement('div');
+        caption_div.classList.add('caption');
+        // Add caption to the image with the image's filename
+        var caption = document.createElement('p');
+        caption.innerHTML = image['filename'];
+        caption_div.appendChild(caption);
+        thumbnail_div.appendChild(caption_div);
+
+        images_div.appendChild(thumbnail_div);
+      });
+    });
+  });
+</script>
+
+</body>
+</html>

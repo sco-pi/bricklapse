@@ -1,0 +1,159 @@
+<script src="https://mozilla.github.io/pdf.js/build/pdf.mjs" type="module"></script>
+
+<script type="module">
+  // If absolute URL from the remote server is provided, configure the CORS
+  // header on that server.
+  var url = '/instructions/42158/6501852',
+      pageNum = 1;
+
+  // Get starting page/doc from /api/status endpoint
+    await fetch('/api/status')
+        .then(response => {
+        if (!response.ok) {
+            throw new Error('Network response was not ok');
+        }
+        return response.json();
+        })
+        .then(data => {
+        url = data['document'];
+        pageNum = data['page'];
+        })
+        .catch(error => {
+        console.error('Error:', error);
+        alert('Failed to get status');
+        });
+
+  // Loaded via <script> tag, create shortcut to access PDF.js exports.
+  var { pdfjsLib } = globalThis;
+
+  // The workerSrc property shall be specified.
+  pdfjsLib.GlobalWorkerOptions.workerSrc = 'https://mozilla.github.io/pdf.js/build/pdf.worker.mjs';
+
+  var pdfDoc = null,
+      pageRendering = false,
+      pageNumPending = null,
+      scale = 2,
+      canvas = document.getElementById('the-canvas'),
+      ctx = canvas.getContext('2d');
+
+  /**
+   * Get page info from document, resize canvas accordingly, and render page.
+   * @param num Page number.
+   */
+  function renderPage(num) {
+    pageRendering = true;
+    // Using promise to fetch the page
+    pdfDoc.getPage(num).then(function(page) {
+      var viewport = page.getViewport({scale: scale});
+      canvas.height = viewport.height;
+      canvas.width = viewport.width;
+
+      // Render PDF page into canvas context
+      var renderContext = {
+        canvasContext: ctx,
+        viewport: viewport
+      };
+      var renderTask = page.render(renderContext);
+
+      // Wait for rendering to finish
+      renderTask.promise.then(function() {
+        pageRendering = false;
+        if (pageNumPending !== null) {
+          // New page rendering is pending
+          renderPage(pageNumPending);
+          pageNumPending = null;
+        }
+      });
+    });
+
+    // Update page counters
+    document.getElementById('page_num').textContent = num;
+  }
+
+  /**
+   * If another page rendering in progress, waits until the rendering is
+   * finised. Otherwise, executes rendering immediately.
+   */
+  function queueRenderPage(num) {
+    if (pageRendering) {
+      pageNumPending = num;
+    } else {
+      renderPage(num);
+    }
+  }
+
+  /**
+   * Asynchronously downloads PDF.
+   */
+  pdfjsLib.getDocument(url).promise.then(function(pdfDoc_) {
+    pdfDoc = pdfDoc_;
+    document.getElementById('page_count').textContent = pdfDoc.numPages;
+
+    // Initial/first page rendering
+    renderPage(pageNum);
+  });
+
+  var follow_ws_updates = false;
+
+  // Show the PDF Page in fullscreen
+  // Additionally start checking for updates from the server every 1 second
+  document.getElementById('the-canvas').addEventListener('click', () => {
+    if (document.fullscreenElement) {
+      document.exitFullscreen();
+      follow_ws_updates = false;
+    } else {
+      document.getElementById('the-canvas').requestFullscreen();
+      follow_ws_updates = true;
+    }
+  });
+
+  // Setup websocket to listen for updates from the server
+  var client_id = Date.now();
+  var ws;
+  var ws_reconnect_interval = 1000;
+
+  function connectWebSocket() {
+    ws = new WebSocket(`ws://${window.location.host}/ws/${client_id}`);
+
+    ws.onmessage = function(event) {
+      var data = JSON.parse(event.data);
+      if (follow_ws_updates) {
+        // If the update has a 'instructions' key, update the document
+        if (data.instructions) {
+          if (data.instructions.page !== pageNum && data.instructions.document === url) {
+            pageNum = data.instructions.page;
+            queueRenderPage(pageNum);
+          }
+          if (data.instructions.document !== url) {
+            url = data.instructions.document;
+            pdfjsLib.getDocument(url).promise.then(function(pdfDoc_) {
+              pdfDoc = pdfDoc_;
+              document.getElementById('page_count').textContent = pdfDoc.numPages;
+            });
+            renderPage(pageNum);
+          }
+        }
+      }
+    };
+
+    ws.onclose = function(event) {
+      console.log('WebSocket is closed. Reconnect will be attempted in 1 second.', event.reason);
+      setTimeout(connectWebSocket, ws_reconnect_interval);
+    };
+
+    ws.onerror = function(err) {
+      console.error('WebSocket encountered error: ', err.message, 'Closing socket');
+      ws.close();
+    };
+  }
+
+  connectWebSocket();
+</script>
+
+<h1><a href="/">Lego Timelapse</a> - Viewer</h1>
+
+<div>
+  <span>Page: <span id="page_num"></span> / <span id="page_count"></span></span>
+</div>
+
+<canvas id="the-canvas"></canvas>

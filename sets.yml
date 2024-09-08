@@ -1,0 +1,43 @@
+sets:
+- id: '42158'
+  instructions:
+  - '6501852'
+  name: Mars Rover
+  timelapse:
+  - interval: 1s
+    lastphoto: '000000'
+    location: /mnt/legotimelaspe/42158/sort
+    phase: sort
+  - interval: 1s
+    lastphoto: '000000'
+    location: /mnt/legotimelaspe/42158/build
+    phase: build
+  - interval: 1s
+    lastphoto: '000000'
+    location: /mnt/legotimelaspe/42158/disassemble
+    phase: disassemble
+- id: '60320'
+  instructions:
+  - '6400453'
+  - '6400455'
+  - '6400457'
+  name: Fire Station
+- id: '60335'
+  instructions:
+  - '6489914'
+  - '6420241'
+  - '6420243'
+  name: Train Station
+- id: '10331'
+  instructions:
+  - '6536354'
+  name: Kingfisher
+- id: '31131'
+  instructions:
+  - '6418372'
+  - '6418374'
+  - '6418376'
+  name: Noodle Shop
+- id: '42115'
+  instructions: []
+  name: Copilot

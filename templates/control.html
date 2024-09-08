@@ -1,0 +1,488 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Lego Timelapse Control</title>
+  <!-- Bootstrap CSS -->
+  <link href="https://stackpath.bootstrapcdn.com/bootstrap/4.5.2/css/bootstrap.min.css" rel="stylesheet">
+  <script src="https://mozilla.github.io/pdf.js/build/pdf.mjs" type="module"></script>
+</head>
+<body>
+
+<div class="container-fluid">
+  <div class="row">
+    <div class="col">
+      <h1><a href="/">Lego Timelapse</a> - Control</h1>
+    </div>
+  </div>
+  <div class="row">
+    <div class="col">
+      <div>
+        <!-- Drop Down for Set selection -->
+        Set <select id="set_select">
+          <option>Select Set</option>
+        </select>
+        <!-- Drop Down for Instrucion selection -->
+        Instruction <select id="instruction_select">
+          <option>Select set first</option>
+        </select>
+        <!-- Buttons for Previous, Next, and Instructions -->
+        <button id="prev">Previous</button>
+        <button id="next">Next</button>
+        &nbsp; &nbsp;
+        <button id="loadLast">Load Last</button>
+        &nbsp; &nbsp;
+        <button id="instructions_1">Instructions 1</button>
+        <button id="instructions_2">Instructions 2</button>
+        <button id="instructions_3">Instructions 3</button>
+        &nbsp; &nbsp;
+        <span>Page: <span id="page_num"></span> / <span id="page_count"></span></span>
+        &nbsp; &nbsp;
+        <a href="/viewer" target="_blank">Viewer</a>
+        <button id="hidePDF">Hide PDF</button>
+      </div>
+    </div>
+    <div class="col">
+      <div>
+        <label for="timelapse_interval">Timelapse Interval (ms)</label>
+        <input type="number" id="timelapse_interval" placeholder="Timelapse Interval" value="1000"/>
+        <!-- List for seleting camera sourced from /api/cameras -->
+        <label for="camera">Camera</label>
+        <select id="camera">
+          <option>Select Camera</option>
+        </select>
+        <!-- List for selecting phase, sorting, build, or dissasembly -->
+        <label for="phase">Phase</label>
+        <select id="phase">
+          <option value="sort">Sort</option>
+          <option value="build" selected="true">Build</option>
+          <option value="disassemble">Disassemble</option>
+        </select>
+        <!-- Button to start timelapse -->
+        <button id="toggle_timelapse">Start</button>
+      </div>
+    </div>
+  </div>
+  <div class="row">
+    <div class="col">
+      <canvas id="the-canvas"></canvas>
+    </div>
+    <div class="col">
+      <div id="latest-timelapse">
+        <img width="640" src="/timelapse/42115/build/frame0011.jpg" />
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- Bootstrap JS -->
+<script src="https://code.jquery.com/jquery-3.5.1.slim.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/@popperjs/core@2.5.3/dist/umd/popper.min.js"></script>
+<script src="https://stackpath.bootstrapcdn.com/bootstrap/4.5.2/js/bootstrap.min.js"></script>
+
+<script type="module">
+  // If absolute URL from the remote server is provided, configure the CORS
+  // header on that server.
+  var url = '/instructions/42158/6501852',
+      pageNum = 1,
+      sets = [],
+      active_set = null,
+      last_timelapse_timestamp = null,
+      timelapse_running = false;
+
+// Get starting page/doc from /api/status endpoint
+  await fetch('/api/status')
+      .then(response => {
+      if (!response.ok) {
+          throw new Error('Network response was not ok');
+      }
+      return response.json();
+      })
+      .then(data => {
+      url = data['document'];
+      pageNum = data['page'];
+      })
+      .catch(error => {
+      console.error('Error:', error);
+      alert('Failed to get status');
+      });
+
+  // Loaded via <script> tag, create shortcut to access PDF.js exports.
+  var { pdfjsLib } = globalThis;
+
+  // The workerSrc property shall be specified.
+  pdfjsLib.GlobalWorkerOptions.workerSrc = 'https://mozilla.github.io/pdf.js/build/pdf.worker.mjs';
+
+  var pdfDoc = null,
+      pageRendering = false,
+      pageNumPending = null,
+      scale = 2,
+      canvas = document.getElementById('the-canvas'),
+      ctx = canvas.getContext('2d');
+
+  /**
+   * Get page info from document, resize canvas accordingly, and render page.
+   * @param num Page number.
+   */
+  function renderPage(num) {
+    pageRendering = true;
+    // Using promise to fetch the page
+    pdfDoc.getPage(num).then(function(page) {
+      var viewport = page.getViewport({scale: scale});
+      canvas.height = viewport.height;
+      canvas.width = viewport.width;
+
+      // Render PDF page into canvas context
+      var renderContext = {
+        canvasContext: ctx,
+        viewport: viewport
+      };
+      var renderTask = page.render(renderContext);
+
+      // Wait for rendering to finish
+      renderTask.promise.then(function() {
+        pageRendering = false;
+        if (pageNumPending !== null) {
+          // New page rendering is pending
+          renderPage(pageNumPending);
+          pageNumPending = null;
+        }
+      });
+    });
+
+    // Update page counters
+    document.getElementById('page_num').textContent = num;
+  }
+
+  /**
+   * If another page rendering in progress, waits until the rendering is
+   * finised. Otherwise, executes rendering immediately.
+   */
+  function queueRenderPage(num) {
+    if (pageRendering) {
+      pageNumPending = num;
+    } else {
+      renderPage(num);
+    }
+  }
+
+  /**
+   * Displays previous page.
+   */
+  function onPrevPage() {
+    if (pageNum <= 1) {
+      return;
+    }
+    pageNum--;
+    queueRenderPage(pageNum);
+    // Send the new page number to the server update_page.php, page and document as query parameters
+    updatePage(pageNum, url);
+  }
+  document.getElementById('prev').addEventListener('click', onPrevPage);
+
+  /**
+   * Displays next page.
+   */
+  function onNextPage() {
+    if (pageNum >= pdfDoc.numPages) {
+      return;
+    }
+    pageNum++;
+    queueRenderPage(pageNum);
+    // Send the new page number to the server update_page.php, page and document as query parameters
+    updatePage(pageNum, url);
+  }
+  document.getElementById('next').addEventListener('click', onNextPage);
+
+  // Function to call the update_page.php script to update the page number and document to the specified values
+  function updatePage(page, document) {
+    fetch('/api/update', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json'
+      },
+      body: JSON.stringify({instructions: {page: page, document: document}})
+    });
+  }
+
+  /**
+   * Asynchronously downloads PDF.
+   */
+  //pdfjsLib.getDocument(url).promise.then(function(pdfDoc_) {
+  //  pdfDoc = pdfDoc_;
+  //  document.getElementById('page_count').textContent = pdfDoc.numPages;
+  //
+  //  // Initial/first page rendering
+  //  renderPage(pageNum);
+  //});
+
+
+  // Capture page up and page down key presses to navigate the document
+  // Additionally use 1, 2 and 3 to switch between the different instructions
+  document.addEventListener('keydown', (event) => {
+    if (event.key === 'PageUp') {
+      onPrevPage();
+    } else if (event.key === 'PageDown') {
+      onNextPage();
+    } else if (event.key === '1') {
+      document.getElementById('instructions_1').click();
+    } else if (event.key === '2') {
+      document.getElementById('instructions_2').click();
+    } else if (event.key === '3') {
+      document.getElementById('instructions_3').click();
+    }
+  });
+
+  // When instructions_1 is clicked, get the document and page number for the first set of instructions from the dropdown
+  document.getElementById('instructions_1').addEventListener('click', () => {
+    setInstructionsForSet(active_set,0);
+  });
+
+  // When instructions_2 is clicked, get the document and page number for the second set of instructions from the dropdown
+  document.getElementById('instructions_2').addEventListener('click', () => {
+    setInstructionsForSet(active_set,1);
+  });
+
+  // When instructions_3 is clicked, get the document and page number for the third set of instructions from the dropdown
+  document.getElementById('instructions_3').addEventListener('click', () => {
+    setInstructionsForSet(active_set,2);
+  });
+
+  function setInstructionsForSet(active_set,instructions_index){
+    var instruction = sets.find(set => set['id'] == active_set)['instructions'][instructions_index];
+    url = '/instructions/' + active_set + '/' + instruction;
+    pageNum = 1;
+    pdfjsLib.getDocument(url).promise.then(function(pdfDoc_) {
+      pdfDoc = pdfDoc_;
+      document.getElementById('page_count').textContent = pdfDoc.numPages;
+      pageNum = 1;
+      queueRenderPage(pageNum);
+    });
+    updatePage(pageNum, url);
+  }
+
+  // Get sets of instructions from the server
+  fetch('/api/sets').then(response => response.json()).then(data => {
+    sets = data['sets'];
+    var set_select = document.getElementById('set_select');
+    sets.forEach(set => {
+      var option = document.createElement('option');
+      option.value = set['id'];
+      option.text = set['name'] + ' (' + set['id'] + ')';
+      set_select.appendChild(option);
+    });
+  });
+
+  // Populate instruction dropdown when the page is loaded as function for reusability
+  function populateInstructionDropdown(set_id){
+    var instructions = sets.find(set => set['id'] == set_id)['instructions'];
+    var instruction_select = document.getElementById('instruction_select');
+    instruction_select.innerHTML = '';
+    // Add default option
+    var option = document.createElement('option');
+    option.text = 'Select Instruction';
+    instruction_select.appendChild(option);
+    // Add all instructions for the selected set
+    instructions.forEach(instruction => {
+      var option = document.createElement('option');
+      // Prefix the instruction with the index of the instruction
+      option.value = instruction;
+      option.text = (instructions.indexOf(instruction) + 1) + ' - ' + instruction;
+      instruction_select.appendChild(option);
+    });
+  }
+
+  // When a set is selected, update the list of instructions
+  document.getElementById('set_select').addEventListener('change', (event) => {
+    var set_id = event.target.value;
+    populateInstructionDropdown(set_id);
+    active_set = set_id;
+  });
+
+  // When an instruction is selected, update the document and page number accordingly
+  document.getElementById('instruction_select').addEventListener('change', (event) => {
+    var instruction = event.target.value;
+    var set_id = document.getElementById('set_select').value;
+    url = '/instructions/' + set_id + '/' + instruction;
+    pageNum = 1;
+    pdfjsLib.getDocument(url).promise.then(function(pdfDoc_) {
+      pdfDoc = pdfDoc_;
+      document.getElementById('page_count').textContent = pdfDoc.numPages;
+      pageNum = 1;
+      queueRenderPage(pageNum);
+    });
+    updatePage(pageNum, url);
+  });
+
+  // Setup websocket to listen for updates from the server, updating the timelapse image when a new one is available
+  var client_id = Date.now();
+  var ws_reconnect_interval = 1000;
+  var ws
+  
+  function connectWebSocket() {
+    ws = new WebSocket(`ws://${window.location.host}/ws/${client_id}`);
+
+    ws.onmessage = function(event) {
+      var data = JSON.parse(event.data);
+      if (data.timelapse) {
+        // Double buffer the image to prevent flickering
+        var img = document.createElement('img');
+        img.src = "/timelapse/" + data.timelapse.set_number + "/" + data.timelapse.phase + "/" + data.timelapse.last_timelapse + "?date=" + Date.now();
+        img.width = 640;
+        img.onload = function() {
+          var old_img = document.getElementById('latest-timelapse').getElementsByTagName('img')[0];
+          document.getElementById('latest-timelapse').replaceChild(img, old_img);
+        };
+
+        last_timelapse_timestamp = data.timelapse.timestamp;
+      }
+    };
+
+    ws.onclose = function(event) {
+      console.log('Websocket closed, reconnecting in ' + ws_reconnect_interval + 'ms');
+      setTimeout(connectWebSocket, ws_reconnect_interval);
+    };
+
+    ws.onerror = function(event) {
+      console.error('Websocket error:', event);
+    };
+  }
+
+  connectWebSocket();
+
+  // Get cameras from the server
+  fetch('/api/cameras').then(response => response.json()).then(data => {
+    var camera_select = document.getElementById('camera');
+    data.forEach(camera => {
+      var option = document.createElement('option');
+      option.value = camera['address'];
+      option.text = camera['name'];
+      camera_select.appendChild(option);
+    });
+    // If there's only one camera, select it by default
+    if (data.length == 1) {
+      camera_select.value = data[0]['address'];
+    }
+  });
+
+  // Compare the time of the last timelapse with the current time, setting the timelapse time to alert class if it is too long
+  function checkTimelapseTime() {
+    if (last_timelapse_timestamp) {
+      // Multiply by 1000 to convert python seconds to javascript milliseconds
+      var js_timestamp = last_timelapse_timestamp * 1000;
+      var interval = document.getElementById('timelapse_interval').value;
+      var time_diff = Date.now() - js_timestamp;
+      //console.log("Checking timelapse diff, last timestamp: " + last_timelapse_timestamp + ", now: " + Date.now() + ", time diff: " + time_diff);
+      if (time_diff > interval) {
+        console.log('Timelapse is too old, time diff: ' + time_diff + ', interval: ' + interval);
+        document.getElementById('latest-timelapse').classList.add('alert');
+      } else {
+        document.getElementById('latest-timelapse').classList.remove('alert');
+      }
+    }
+  }
+
+  // Toggle the timelapse when the toggle button is clicked
+  document.getElementById('toggle_timelapse').addEventListener('click', () => {
+    if (!timelapse_running) {
+      var camera = document.getElementById('camera').value;
+      var phase = document.getElementById('phase').value;
+      var timelapse_interval = document.getElementById('timelapse_interval').value;
+      if (camera == 'Select Camera') {
+        alert('Select a camera');
+        return;
+      }
+      if (phase == 'Select Phase') {
+        alert('Select a phase');
+        return;
+      }
+      if (timelapse_interval == '') {
+        alert('Enter a timelapse interval');
+        return;
+      }
+      timelapse_running = true;
+
+      // Change the inputs to disabled and the button text to Stop
+      document.getElementById('camera').disabled = true;
+      document.getElementById('phase').disabled = true;
+      document.getElementById('timelapse_interval').disabled = true;
+      document.getElementById('toggle_timelapse').textContent = 'Stop';
+
+      // set timeer to check the timelapse time every timelapse interval / 10
+      setInterval(checkTimelapseTime, timelapse_interval / 10);
+
+      //var data = {
+      //  camera: camera,
+      //  phase: phase,
+      //  timelapse_interval: timelapse_interval
+      //};
+      //fetch('/api/timelapse', {
+      //  method: 'POST',
+      //  headers: {
+      //    'Content-Type': 'application/json'
+      //  },
+      //  body: JSON.stringify(data)
+      //}).then(response => {
+      //  if (!response.ok) {
+      //    throw new Error('Network response was not ok');
+      //  }
+      //  return response.json();
+      //}).then(data => {
+      //  last_timelapse_timestamp = Date.now();
+      //}).catch(error => {
+      //  console.error('Error:', error);
+      //  alert('Failed to start timelapse');
+      //});
+    } else {
+      timelapse_running = false;
+
+      // Stop the check timelapse time interval
+      clearInterval(checkTimelapseTime);
+
+      // Change the inputs to enabled and the button text to Start
+      document.getElementById('camera').disabled = false;
+      document.getElementById('phase').disabled = false;
+      document.getElementById('timelapse_interval').disabled = false;
+      document.getElementById('toggle_timelapse').textContent = 'Start';
+
+      //fetch('/api/timelapse', {
+      //  method: 'DELETE'
+      //}).then(response => {
+      //  if (!response.ok) {
+      //    throw new Error('Network response was not ok');
+      //  }
+      //  return response.json();
+      //}).then(data => {
+      //  console.log('Success:', data);
+      //}).catch(error => {
+      //  console.error('Error:', error);
+      //  alert('Failed to stop timelapse');
+      //});
+    }
+  });
+
+  // Hide the PDF when the hide button is clicked
+  document.getElementById('hidePDF').
+      addEventListener('click', () => {
+        document.getElementById('the-canvas').style.display = 'none';
+      });
+
+  // Load the last document from the status endpoint
+  document.getElementById('loadLast').addEventListener('click', () => {
+    pdfjsLib.getDocument(url).promise.then(function(pdfDoc_) {
+      pdfDoc = pdfDoc_;
+      document.getElementById('page_count').textContent = pdfDoc.numPages;
+      queueRenderPage(pageNum);
+    });
+    // Set the dropdowns to the last set and instruction
+    document.getElementById('set_select').value = url.split('/')[2];
+    // Populate the instruction dropdown
+    populateInstructionDropdown(url.split('/')[2]);
+    document.getElementById('instruction_select').value = url.split('/')[3];
+    active_set = url.split('/')[2];
+  });
+
+</script>
+</body>
+</html>
