@@ -202,7 +202,7 @@
       headers: {
         'Content-Type': 'application/json'
       },
-      body: JSON.stringify({instructions: {page: page, document: document}})
+      body: JSON.stringify({instructions: {page: page, document: document}, client_id: client_id})
     });
   }
 
@@ -324,6 +324,7 @@
     ws = new WebSocket(`ws://${window.location.host}/ws/${client_id}`);
 
     ws.onmessage = function(event) {
+      console.log('Received message:', event.data);
       var data = JSON.parse(event.data);
       if (data.timelapse) {
         // Double buffer the image to prevent flickering
@@ -336,6 +337,22 @@
         };
 
         last_timelapse_timestamp = data.timelapse.timestamp;
+      }
+      // Update the document and page number if theres a page update and it's not from the current client
+      if (data.instructions && data.client_id != client_id) {
+        console.log('Received page update:', data);
+        if (data.instructions.page !== pageNum && data.instructions.document === url) {
+          pageNum = data.instructions.page;
+          queueRenderPage(pageNum);
+        }
+        if (data.instructions.document !== url) {
+          url = data.instructions.document;
+          pdfjsLib.getDocument(url).promise.then(function(pdfDoc_) {
+            pdfDoc = pdfDoc_;
+            document.getElementById('page_count').textContent = pdfDoc.numPages;
+          });
+          renderPage(pageNum);
+        }
       }
     };
 

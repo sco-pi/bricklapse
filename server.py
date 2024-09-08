@@ -37,6 +37,10 @@ class ConnectionManager:
 
 manager = ConnectionManager()
 
+# Function for sending updates to the websocket on page/document changes
+async def sendDocumentUpdate(page, document, client_id):
+    await manager.broadcast(f'{{"instructions": {{"page": {page}, "document": "{document}"}}, "client_id": "{client_id}"}}')
+
 # Default UI Linking to Control, Viewer, and WS Log UIs
 @app.get("/")
 async def get():
@@ -168,6 +172,10 @@ async def get():
 @app.post("/api/update")
 async def update(request: Request):
     data = await request.json()
+    # Get client_id from the request if it exists, otherwise set to unknown
+    client_id = "unknown"
+    if "client_id" in data:
+        client_id = data["client_id"]
 
     # Check to see if page/document is set to check if the update is from a page chage
     # or if the filename is set as an update from the timelapse
@@ -181,7 +189,7 @@ async def update(request: Request):
         last_document = instructiondata["document"]
 
         # Send update to all connected clients as JSON
-        await manager.broadcast(f'{{"instructions": {{"page": {last_page}, "document": "{last_document}"}}}}')
+        await sendDocumentUpdate(last_page, last_document, client_id)
 
         return {"page": last_page, "instruction_number": last_document}
     elif "timelapse" in data:
@@ -221,6 +229,26 @@ async def get(set_number: str, phase: str):
         }
         images.append(image_obj)
     return images
+
+# API Endpoint to move to the next page
+@app.post("/api/next")
+async def next_page():
+    global last_page
+    # TODO: Check if the page is already at the last page, if so, don't go beyond the last page
+    last_page += 1
+    await sendDocumentUpdate(last_page, last_document, "api")
+    return {"page": last_page, "document": last_document}
+
+# API Endpoint to move to the previous page
+@app.post("/api/previous")
+async def previous_page():
+    global last_page
+    # Check if the page is already at 1, if so, don't go below 1
+    if last_page == 1:
+        return {"page": last_page, "document": last_document}
+    last_page -= 1
+    await sendDocumentUpdate(last_page, last_document, "api")
+    return {"page": last_page, "document": last_document}
 
 @app.websocket("/ws/{client_id}")
 async def websocket_endpoint(websocket: WebSocket, client_id: int):
