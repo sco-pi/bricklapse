@@ -147,13 +147,22 @@
     };
   }
 
+  document.getElementById('follow_ws_updates').addEventListener('click', () => {
+    follow_ws_updates = !follow_ws_updates;
+    if (follow_ws_updates) {
+      document.getElementById('follow_ws_updates').textContent = 'Stop Following Updates';
+    } else {
+      document.getElementById('follow_ws_updates').textContent = 'Follow Updates';
+    }
+  });
+
   connectWebSocket();
 </script>
 
 <h1><a href="/">Lego Timelapse</a> - Viewer</h1>
 
 <div>
-  <span>Page: <span id="page_num"></span> / <span id="page_count"></span></span>
+  <span>Page: <span id="page_num"></span> / <span id="page_count"></span></span>&nbsp;<button id="follow_ws_updates" class="btn btn-primary">Follow Updates</button>
 </div>
 
 <canvas id="the-canvas"></canvas>

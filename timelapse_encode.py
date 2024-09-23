@@ -16,6 +16,12 @@ def phaseToText(phase):
     phase_text = phase.title()
     if phase == 'build':
         phase_text = 'Build'
+    elif phase == 'build1':
+        phase_text = 'Build Alternate 1'
+    elif phase == 'build2':
+        phase_text = 'Build Alternate 2'
+    elif phase == 'build3':
+        phase_text = 'Build Alternate 3'
     elif phase == 'disassemble':
         phase_text = 'Disassembly'
     elif phase == 'sort':
