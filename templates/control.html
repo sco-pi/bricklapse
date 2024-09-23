@@ -196,13 +196,18 @@
   document.getElementById('next').addEventListener('click', onNextPage);
 
   // Function to call the update_page.php script to update the page number and document to the specified values
-  function updatePage(page, document) {
+  function updatePage(page, doc) {
+    // Get set number from set select dropdown
+    var set_number = document.getElementById('set_select').value;
+    // Get phase from phase select dropdown
+    var phase = document.getElementById('phase').value;
+
     fetch('/api/update', {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json'
       },
-      body: JSON.stringify({instructions: {page: page, document: document}, client_id: client_id})
+      body: JSON.stringify({instructions: {page: page, document: doc, set: set_number, phase: phase}, client_id: client_id})
     });
   }
 

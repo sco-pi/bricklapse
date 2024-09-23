@@ -107,8 +107,8 @@ def main():
 if __name__ == "__main__":
     parser = argparse.ArgumentParser()
     parser.add_argument("--api-host", type=str, default=API_HOST, help="Host to update with the status of the timelapse")
-    parser.add_argument("--set-number", type=str, default=SET_NUMBER, help="Set number to capture images for")
-    parser.add_argument("--phase", type=str, default=PHASE, help="Phase of the timelapse, e.g. sort, build, or dissasemble")
+    parser.add_argument("--set-number", type=str, default="0", help="Set number to capture images for")
+    parser.add_argument("--phase", type=str, default="0", help="Phase of the timelapse, e.g. sort, build, or dissasemble")
     parser.add_argument("--initial-count", type=int, default=INITIAL_COUNT, help="Initial number of the captured images")
     args = parser.parse_args()
     API_HOST = args.api_host
@@ -116,4 +116,20 @@ if __name__ == "__main__":
     PHASE = args.phase
     INITIAL_COUNT = args.initial_count
     WORK_DIR = f"/mnt/legotimelapse/captures/{SET_NUMBER}/{PHASE}"
+
+    # If setnumber or phase is 0 set details from the API /api/status endpoint
+    if SET_NUMBER == "0" or PHASE == "0":
+        status = requests.get(f"{API_HOST}/api/status")
+        if status.status_code == 200:
+            data = status.json()
+            if SET_NUMBER == "0":
+                SET_NUMBER = data["set"]
+            if PHASE == "0":
+                PHASE = data["phase"]
+        else:
+            print("Error getting status from the API")
+            sys.exit(1)
+
+    print(f"Starting capture for set {SET_NUMBER} in phase {PHASE} starting at {INITIAL_COUNT}")
+
     sys.exit(main())

@@ -16,6 +16,8 @@ app.mount("/static", StaticFiles(directory="static"), name="static")
 instructions_dir = "/mnt/legotimelapse/instructions"
 last_page = 1
 last_document = "/instructions/42158/6501852" # Defaults to the Mars Rover set, need to find a better way to default
+last_set = "42158"
+last_phase = "build"
 
 templates = Jinja2Templates(directory="templates")
 
@@ -166,7 +168,7 @@ async def update(set_id: int, set: dict):
 # Get current page and instruction number as status
 @app.get("/api/status")
 async def get():
-    return {"page": last_page, "document": last_document}
+    return {"page": last_page, "document": last_document, "set": last_set, "phase": last_phase}
 
 # Handle the page update request, taking the page number and instruction number from the json body
 @app.post("/api/update")
@@ -182,11 +184,15 @@ async def update(request: Request):
     if "instructions" in data:
         global last_page
         global last_document
+        global last_set
+        global last_phase
 
         instructiondata = data["instructions"]
 
         last_page = instructiondata["page"]
         last_document = instructiondata["document"]
+        last_set = instructiondata["set"]
+        last_phase = instructiondata["phase"]
 
         # Send update to all connected clients as JSON
         await sendDocumentUpdate(last_page, last_document, client_id)
