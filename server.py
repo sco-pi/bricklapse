@@ -43,32 +43,36 @@ manager = ConnectionManager()
 async def sendDocumentUpdate(page, document, client_id):
     await manager.broadcast(f'{{"instructions": {{"page": {page}, "document": "{document}"}}, "client_id": "{client_id}"}}')
 
+@app.get("/favicon.ico", include_in_schema=False)
+async def get_favicon():
+    return FileResponse("static/favicon.ico")
+
 # Default UI Linking to Control, Viewer, and WS Log UIs
-@app.get("/")
+@app.get("/", include_in_schema=False)
 async def get():
     return FileResponse("templates/index.html")
 
-@app.get("/control")
+@app.get("/control", include_in_schema=False)
 async def get():
     return FileResponse("templates/control.html")
 
 # Viewer UI
-@app.get("/viewer")
+@app.get("/viewer", include_in_schema=False)
 async def get():
     return FileResponse("templates/viewer.html")
 
 # Sets UI
-@app.get("/sets")
+@app.get("/sets", include_in_schema=False)
 async def get():
     return FileResponse("templates/sets.html")
 
 # Temp Chat UI to test websocket connection
-@app.get("/wslog")
+@app.get("/wslog", include_in_schema=False)
 async def get():
     return FileResponse("templates/wslog.html")
 
 # Get Image UI
-@app.get("/images")
+@app.get("/images", include_in_schema=False)
 async def get():
     return FileResponse("templates/imageview.html")
 
