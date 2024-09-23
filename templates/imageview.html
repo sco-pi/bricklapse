@@ -30,7 +30,12 @@
         <option value="disassemble">Disassemble</option>
       </select>
       <!-- Button to get images -->
-      <button id="get_images" class="btn btn-primary">Get Images</button>
+      <button id="get_images" class="btn btn-primary">Get All Images</button>
+      <!-- Button to get first, middle, and last 5 images -->
+      <button id="get_sample_images" class="btn btn-primary">Get Sample Images</button>
+      &nbsp;
+      <!-- Button to start encoding -->
+      <button id="start_encoding" class="btn btn-primary">Start Encoding</button>
     </div>
   </div>
   <!-- Grid of images -->
@@ -88,6 +93,66 @@
 
         images_div.appendChild(thumbnail_div);
       });
+    });
+  });
+
+  // Get sample images for the selected set and phase
+  document.getElementById('get_sample_images').addEventListener('click', function() {
+    var set_id = document.getElementById('set_select').value;
+    var phase = document.getElementById('phase_select').value;
+    var images_div = document.getElementById('images');
+    images_div.innerHTML = '';
+    fetch('/api/images/' + set_id + '/' + phase + '?date=' + Date.now()).then(response => response.json()).then(data => {
+      // Build list of first, middle, and last 5 images
+      var sample_images = data.slice(0, 5).concat(data.slice(data.length / 2 - 2, data.length / 2 + 3)).concat(data.slice(data.length - 5, data.length));
+      sample_images.forEach(image => {
+        // Create thumbnail div for each image
+        var thumbnail_div = document.createElement('div');
+        thumbnail_div.classList.add('img-thumbnail');
+        thumbnail_div.style = 'display: inline-block; margin: 5px;';
+
+        var img = document.createElement('img');
+        img.src = image['url'];
+        img.style = 'max-width: 200px;';
+        //img.classList.add('img-rounded');
+        //img.classList.add('img-fluid');
+        thumbnail_div.appendChild(img);
+        
+        var caption_div = document.createElement('div');
+        caption_div.classList.add('caption');
+        // Add caption to the image with the image's filename
+        var caption = document.createElement('p');
+        caption.innerHTML = image['filename'];
+        caption_div.appendChild(caption);
+        thumbnail_div.appendChild(caption_div);
+
+        images_div.appendChild(thumbnail_div);
+      });
+    });
+  });
+
+  // Start encoding the images
+  document.getElementById('start_encoding').addEventListener('click', function() {
+    var set_id = document.getElementById('set_select').value;
+    // Confirm a set is selected
+    if (set_id == 'Select Set') {
+      alert('Please select a set');
+      return;
+    }
+    var phase = document.getElementById('phase_select').value;
+    // Confirm a phase is selected
+    if (phase == 'Select Phase') {
+      alert('Please select a phase');
+      return;
+    }
+    fetch('/api/images/' + set_id + '/' + phase + '/encode', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json'
+      },
+      body: JSON.stringify({ date: Date.now() })
+    }).then(response => response.json()).then(data => {
+      alert('Encoding started');
     });
   });
 </script>

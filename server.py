@@ -230,6 +230,19 @@ async def get(set_number: str, phase: str):
         images.append(image_obj)
     return images
 
+# Start new timelapse encoding via websocket
+@app.post("/api/images/{set_number}/{phase}/encode")
+async def encode(set_number: str, phase: str):
+    # Get set name from sets.yml
+    with open("sets.yml", "r") as f:
+        sets = yaml.safe_load(f)
+        for lego_set in sets['sets']:
+            if lego_set['id'] == set_number:
+                set_name = lego_set['name']
+    # Send message to websocket to start encoding timelapse
+    await manager.broadcast(f'{{"encode": {{"set_number": "{set_number}", "set_name": "{set_name}", "phase": "{phase}"}}}}')
+    return {"message": "Encoding timelapse"}
+
 # API Endpoint to move to the next page
 @app.post("/api/next")
 async def next_page():
