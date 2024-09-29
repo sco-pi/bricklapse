@@ -115,7 +115,6 @@ if __name__ == "__main__":
     SET_NUMBER = args.set_number
     PHASE = args.phase
     INITIAL_COUNT = args.initial_count
-    WORK_DIR = f"/mnt/legotimelapse/captures/{SET_NUMBER}/{PHASE}"
 
     # If setnumber or phase is 0 set details from the API /api/status endpoint
     if SET_NUMBER == "0" or PHASE == "0":
@@ -130,6 +129,7 @@ if __name__ == "__main__":
             print("Error getting status from the API")
             sys.exit(1)
 
+    WORK_DIR = f"/mnt/legotimelapse/captures/{SET_NUMBER}/{PHASE}"
     print(f"Starting capture for set {SET_NUMBER} in phase {PHASE} starting at {INITIAL_COUNT}")
 
     sys.exit(main())
