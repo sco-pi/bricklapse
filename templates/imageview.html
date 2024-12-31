@@ -36,6 +36,8 @@
       <button id="get_images" class="btn btn-primary">Get All Images</button>
       <!-- Button to get first, middle, and last 5 images -->
       <button id="get_sample_images" class="btn btn-primary">Get Sample Images</button>
+      <!-- Button to add overlay to all visible images -->
+      <button id="add_overlay" class="btn btn-primary">Add Overlay</button>
       &nbsp;
       <!-- Button to start encoding -->
       <button id="start_encoding" class="btn btn-primary">Start Encoding</button>
@@ -157,6 +159,68 @@
     }).then(response => response.json()).then(data => {
       alert('Encoding started');
     });
+  });
+
+  // Overlay green bounding box on image to show the area that will be cropped for encoding
+  // This should be 4x5 aspect ratio in the center of the image
+  function overlayBoundingBox(image) {
+    var canvas = document.createElement('canvas');
+    var ctx = canvas.getContext('2d');
+    var width = image.width;
+    var height = image.height;
+    var aspect_ratio = 4 / 5;
+
+    // Draw the base image on the canvas
+    canvas.width = width;
+    canvas.height = height;
+    ctx.drawImage(image, 0, 0, width, height);
+
+    // Calculate the size of the bounding box
+    var box_width = width;
+    var box_height = box_width / aspect_ratio;
+    if (box_height > height) {
+      box_height = height;
+      box_width = box_height * aspect_ratio;
+    }
+
+    // Calculate the position of the bounding box
+    var box_x = (width - box_width) / 2;
+    var box_y = (height - box_height) / 2;
+
+    // Draw the bounding box
+    ctx.strokeStyle = 'green';
+    ctx.lineWidth = 5;
+    ctx.strokeRect(box_x, box_y, box_width, box_height);
+
+    // Replace the image with the canvas
+    image.parentNode.replaceChild(canvas, image);
+
+    // Add the image to the canvas
+    canvas.appendChild(image);
+  }
+
+  // Remove the overlay from the image
+  function removeOverlay(image) {
+    var canvas = image.parentNode;
+    canvas.parentNode.replaceChild(image, canvas);
+  }
+
+  // Add the overlay to all visible images when the add_overlay button is clicked
+  document.getElementById('add_overlay').addEventListener('click', function() {
+    // If the text of the button is "Remove Overlay", remove the overlay from all images
+    var addOrRemove = document.getElementById('add_overlay').innerHTML == 'Add Overlay';
+
+    var images = document.getElementById('images').getElementsByTagName('img');
+    for (var i = 0; i < images.length; i++) {
+      if (addOrRemove) {
+        overlayBoundingBox(images[i]);
+      } else {
+        removeOverlay(images[i]);
+      }
+    }
+
+    // Update the button text to reflect the action that will be taken next
+    document.getElementById('add_overlay').innerHTML = addOrRemove ? 'Remove Overlay' : 'Add Overlay';
   });
 </script>
 
