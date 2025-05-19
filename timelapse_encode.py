@@ -22,6 +22,8 @@ def phaseToText(phase):
         phase_text = 'Build Alternate 2'
     elif phase == 'build3':
         phase_text = 'Build Alternate 3'
+    elif phase == 'install_lights':
+        phase_text = 'Install Lights'
     elif phase == 'disassemble':
         phase_text = 'Disassembly'
     elif phase == 'sort':

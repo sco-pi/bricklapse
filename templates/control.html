@@ -60,6 +60,7 @@
           <option value="build1">Build Alternate 1</option>
           <option value="build2">Build Alternate 2</option>
           <option value="build3">Build Alternate 3</option>
+          <option value="installing_lights">Installing Lights</option>
           <option value="disassemble">Disassemble</option>
         </select>
         <!-- Button to start timelapse -->
@@ -226,36 +227,88 @@
   //});
 
 
-  // Capture page up and page down key presses to navigate the document
-  // Additionally use 1, 2 and 3 to switch between the different instructions
+  // Capture key presses to navigate the document and instructions
   document.addEventListener('keydown', (event) => {
+    // Page navigation
     if (event.key === 'PageUp') {
       onPrevPage();
     } else if (event.key === 'PageDown') {
       onNextPage();
-    } else if (event.key === '1') {
-      document.getElementById('instructions_1').click();
-    } else if (event.key === '2') {
-      document.getElementById('instructions_2').click();
-    } else if (event.key === '3') {
-      document.getElementById('instructions_3').click();
+    } 
+    // Instruction selection via number keys (1-5)
+    else if (/^[1-5]$/.test(event.key)) {
+      const instructionIndex = parseInt(event.key) - 1;
+      setInstructionsForSet(active_set, instructionIndex);
+    } 
+    // Next/previous instruction navigation
+    else if (event.key === '+' || event.key === '=') {
+      moveToNextInstruction();
+    } else if (event.key === '-' || event.key === '_') {
+      moveToPreviousInstruction();
     }
   });
 
-  // When instructions_1 is clicked, get the document and page number for the first set of instructions from the dropdown
-  document.getElementById('instructions_1').addEventListener('click', () => {
-    setInstructionsForSet(active_set,0);
-  });
+  // Add event listeners for instruction buttons
+  for (let i = 1; i <= 3; i++) {
+    document.getElementById(`instructions_${i}`).addEventListener('click', () => {
+      setInstructionsForSet(active_set, i-1);
+    });
+  }
 
-  // When instructions_2 is clicked, get the document and page number for the second set of instructions from the dropdown
-  document.getElementById('instructions_2').addEventListener('click', () => {
-    setInstructionsForSet(active_set,1);
-  });
+  // Function to move to the next/previous instruction
+  function moveInstructionBy(offset) {
+    if (!active_set) {
+      console.log('No active set selected');
+      return;
+    }
+    
+    const currentSet = sets.find(set => set['id'] == active_set);
+    if (!currentSet || !currentSet.instructions || currentSet.instructions.length === 0) {
+      console.log('No instructions found for active set');
+      return;
+    }
 
-  // When instructions_3 is clicked, get the document and page number for the third set of instructions from the dropdown
-  document.getElementById('instructions_3').addEventListener('click', () => {
-    setInstructionsForSet(active_set,2);
-  });
+    // Find the current instruction in the dropdown
+    const instructionSelect = document.getElementById('instruction_select');
+    const currentInstruction = instructionSelect.value;
+    
+    // Find the index of the current instruction
+    const currentIndex = currentSet.instructions.indexOf(currentInstruction);
+    
+    // Calculate new index
+    const newIndex = currentIndex + offset;
+    
+    // Check bounds
+    if (currentIndex === -1) {
+      console.log('Current instruction not found');
+      return;
+    }
+    
+    if (newIndex < 0) {
+      console.log('Already at the first instruction');
+      return;
+    }
+    
+    if (newIndex >= currentSet.instructions.length) {
+      console.log('Already at the last instruction');
+      return;
+    }
+    
+    // Move to the new instruction
+    setInstructionsForSet(active_set, newIndex);
+    
+    // Update the dropdown to reflect the new instruction
+    instructionSelect.value = currentSet.instructions[newIndex];
+  }
+  
+  // Helper functions that use the main moveInstructionBy function
+  function moveToNextInstruction() {
+    moveInstructionBy(1);
+  }
+  
+  function moveToPreviousInstruction() {
+    moveInstructionBy(-1);
+  }
 
   function setInstructionsForSet(active_set,instructions_index){
     var instruction = sets.find(set => set['id'] == active_set)['instructions'][instructions_index];
