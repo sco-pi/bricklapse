@@ -59,13 +59,29 @@ def getCropFilter(OutputResolutionX, OutputResolutionY, firstFramePath):
 
     return crop_width, crop_height, crop_x, crop_y
 
-def createTimelaspe(BasePath, FilePattern, FirstFile, OutputDir, OutputResX, OutputResY, SetNumber, SetName, Phase, TitleTime=5, logoPath='BorrowLapse.png'):
+def createTimelaspe(BasePath, FilePattern, FirstFile, OutputDir, OutputResX, OutputResY, SetNumber, SetName, Phase, TitleTime=5, logoPath='BorrowLapse.png', ExposureSettings=None):
     stream = ffmpeg.input( f'{BasePath}/{FilePattern}', framerate=60, pattern_type='sequence', start_number=1)
 
     # Crop video to 3200x4000 starting at 1600x0
     #stream = ffmpeg.filter(stream, 'crop', 3200, 4000, 1600, 0)
     crop_width, crop_height, crop_x, crop_y = getCropFilter(OutputResX, OutputResY, f'{BasePath}/{FirstFile}')
     stream = ffmpeg.filter(stream, 'crop', crop_width, crop_height, crop_x, crop_y)
+    
+    # Apply exposure adjustments if provided
+    if ExposureSettings:
+        # Apply brightness and contrast adjustments if they exist and are not zero
+        if 'brightness' in ExposureSettings and ExposureSettings['brightness'] != 0:
+            # FFMPEG eq filter uses values from -1 to 1, so normalize from our -100 to 100 range
+            brightness_value = float(ExposureSettings['brightness']) / 100
+            stream = ffmpeg.filter(stream, 'eq', brightness=brightness_value)
+            print(f"Applied brightness adjustment: {brightness_value}")
+            
+        if 'contrast' in ExposureSettings and ExposureSettings['contrast'] != 0:
+            # FFMPEG eq filter uses values starting at 1 (1 is normal, 2 is more contrast)
+            # Convert our -100 to 100 range to 0.5 to 1.5 range
+            contrast_value = 1 + (float(ExposureSettings['contrast']) / 100)
+            stream = ffmpeg.filter(stream, 'eq', contrast=contrast_value)
+            print(f"Applied contrast adjustment: {contrast_value}")
 
     # Overlay the set number and name on the top left of the video for the first TitleTime seconds
     SetAndPhase = f'#{SetNumber} - {phaseToText(Phase)}'
@@ -86,11 +102,17 @@ def createTimelaspe(BasePath, FilePattern, FirstFile, OutputDir, OutputResX, Out
 def on_message(ws, message):
     print(message)
     data = json.loads(message)
-    # Check if message has a encode key
+    # Check if message has an encode key
     if data["encode"]:
         encode_data = data["encode"]
         # Check if the encode data has the required keys
         if "set_number" in encode_data and "set_name" in encode_data and "phase" in encode_data:
+            # Check for exposure settings
+            exposure_settings = None
+            if "exposure" in encode_data:
+                exposure_settings = encode_data["exposure"]
+                print(f"Received exposure settings: {exposure_settings}")
+                
             createTimelaspe(
                 BasePath=f'{BASE_DIR}/captures/{encode_data["set_number"]}/{encode_data["phase"]}',
                 FilePattern="frame%05d.jpg",
@@ -101,6 +123,7 @@ def on_message(ws, message):
                 SetNumber=encode_data["set_number"],
                 SetName=encode_data["set_name"],
                 Phase=encode_data["phase"],
+                ExposureSettings=exposure_settings
             )
         else:
             print("Missing required keys in encode data")

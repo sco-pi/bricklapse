@@ -7,6 +7,7 @@ from typing import List
 import yaml
 import shutil
 import os
+import json
 import gphoto2 as gp
 
 app = FastAPI()
@@ -247,15 +248,34 @@ async def get(set_number: str, phase: str):
 
 # Start new timelapse encoding via websocket
 @app.post("/api/images/{set_number}/{phase}/encode")
-async def encode(set_number: str, phase: str):
+async def encode(set_number: str, phase: str, request: Request):
     # Get set name from sets.yml
     with open("sets.yml", "r") as f:
         sets = yaml.safe_load(f)
         for lego_set in sets['sets']:
             if lego_set['id'] == set_number:
                 set_name = lego_set['name']
-    # Send message to websocket to start encoding timelapse
-    await manager.broadcast(f'{{"encode": {{"set_number": "{set_number}", "set_name": "{set_name}", "phase": "{phase}"}}}}')
+    
+    # Get request data for exposure settings
+    request_data = await request.json()
+    exposure_settings = {}
+    
+    # Check if exposure settings were provided
+    if 'exposure' in request_data:
+        exposure_settings = request_data['exposure']
+        # Send message to websocket to start encoding timelapse with exposure settings
+        await manager.broadcast(json.dumps({
+            "encode": {
+                "set_number": set_number,
+                "set_name": set_name,
+                "phase": phase,
+                "exposure": exposure_settings
+            }
+        }))
+    else:
+        # Send message to websocket to start encoding timelapse without exposure settings
+        await manager.broadcast(f'{{"encode": {{"set_number": "{set_number}", "set_name": "{set_name}", "phase": "{phase}"}}}}')
+    
     return {"message": "Encoding timelapse"}
 
 # API Endpoint to move to the next page

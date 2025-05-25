@@ -40,6 +40,20 @@
       <!-- Button to add overlay to all visible images -->
       <button id="add_overlay" class="btn btn-primary">Add Overlay</button>
       &nbsp;
+      <!-- Exposure adjustments -->
+      <div class="exposure-controls" style="display: inline-block; margin-left: 10px; margin-right: 10px; padding: 5px; border: 1px solid #ccc; border-radius: 5px;">
+        <label for="brightness">Brightness:</label>
+        <input type="range" id="brightness" min="-100" max="100" value="0" step="5">
+        <span id="brightness_value">0</span>
+        
+        <label for="contrast" style="margin-left: 10px;">Contrast:</label>
+        <input type="range" id="contrast" min="-100" max="100" value="0" step="5">
+        <span id="contrast_value">0</span>
+        
+        <button id="reset_exposure" class="btn btn-secondary btn-sm" style="margin-left: 10px;">Reset</button>
+        <button id="preview_exposure" class="btn btn-info btn-sm" style="margin-left: 5px;">Preview</button>
+      </div>
+      &nbsp;
       <!-- Button to start encoding -->
       <button id="start_encoding" class="btn btn-primary">Start Encoding</button>
     </div>
@@ -137,6 +151,48 @@
     });
   });
 
+  // Handle exposure sliders
+  document.getElementById('brightness').addEventListener('input', function() {
+    document.getElementById('brightness_value').textContent = this.value;
+  });
+  
+  document.getElementById('contrast').addEventListener('input', function() {
+    document.getElementById('contrast_value').textContent = this.value;
+  });
+  
+  // Reset exposure controls
+  document.getElementById('reset_exposure').addEventListener('click', function() {
+    document.getElementById('brightness').value = 0;
+    document.getElementById('contrast').value = 0;
+    document.getElementById('brightness_value').textContent = '0';
+    document.getElementById('contrast_value').textContent = '0';
+    
+    // Remove any applied CSS filters from the images
+    var images = document.getElementById('images').getElementsByTagName('img');
+    for (var i = 0; i < images.length; i++) {
+      images[i].style.filter = '';
+    }
+  });
+  
+  // Preview exposure adjustments on the displayed images
+  document.getElementById('preview_exposure').addEventListener('click', function() {
+    var brightness = document.getElementById('brightness').value;
+    var contrast = document.getElementById('contrast').value;
+    
+    var filterValue = '';
+    if (brightness != 0) {
+      filterValue += `brightness(${100 + parseInt(brightness)}%) `;
+    }
+    if (contrast != 0) {
+      filterValue += `contrast(${100 + parseInt(contrast)}%)`;
+    }
+    
+    var images = document.getElementById('images').getElementsByTagName('img');
+    for (var i = 0; i < images.length; i++) {
+      images[i].style.filter = filterValue;
+    }
+  });
+
   // Start encoding the images
   document.getElementById('start_encoding').addEventListener('click', function() {
     var set_id = document.getElementById('set_select').value;
@@ -151,14 +207,25 @@
       alert('Please select a phase');
       return;
     }
+    
+    // Get exposure settings
+    var brightness = document.getElementById('brightness').value;
+    var contrast = document.getElementById('contrast').value;
+    
     fetch('/api/images/' + set_id + '/' + phase + '/encode', {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json'
       },
-      body: JSON.stringify({ date: Date.now() })
+      body: JSON.stringify({ 
+        date: Date.now(),
+        exposure: {
+          brightness: parseInt(brightness),
+          contrast: parseInt(contrast)
+        }
+      })
     }).then(response => response.json()).then(data => {
-      alert('Encoding started');
+      alert('Encoding started with exposure adjustments');
     });
   });
 
