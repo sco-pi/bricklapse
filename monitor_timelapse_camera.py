@@ -46,6 +46,8 @@ import sys
 import time
 import requests
 import argparse
+import glob
+import re
 
 import gphoto2 as gp
 
@@ -63,6 +65,29 @@ INTERVAL = 1.0
 WORK_DIR = f"/mnt/legotimelapse/captures/{SET_NUMBER}/{PHASE}"
 # result
 OUT_FILE = 'time_lapse.mp4'
+
+def get_last_file_number(directory, file_pattern="*.jpg"):
+    """Find the highest numbered file in the directory and return the next number."""
+    try:
+        files = glob.glob(os.path.join(directory, file_pattern))
+        if not files:
+            return INITIAL_COUNT # No files found, start with the initial count
+            
+        # Extract numbers from filenames using regex
+        numbers = []
+        for file in files:
+            filename = os.path.basename(file)
+            match = re.search(r'(\d+)', filename)
+            if match:
+                numbers.append(int(match.group(1)))
+                
+        # Debug print the count of the files
+        print(f"Found {len(numbers)} files in the directory")
+        
+        return max(numbers) + 1 if numbers else INITIAL_COUNT
+    except Exception as e:
+        print(f"Error detecting last file number: {e}")
+        return INITIAL_COUNT  # Default to initial count if there is an error
 
 
 def main():
@@ -114,7 +139,11 @@ if __name__ == "__main__":
     API_HOST = args.api_host
     SET_NUMBER = args.set_number
     PHASE = args.phase
-    INITIAL_COUNT = args.initial_count
+    
+    if args.initial_count == -1:
+        INITIAL_COUNT = get_last_file_number(WORK_DIR)
+    else:
+        INITIAL_COUNT = args.initial_count
 
     # If setnumber or phase is 0 set details from the API /api/status endpoint
     if SET_NUMBER == "0" or PHASE == "0":
