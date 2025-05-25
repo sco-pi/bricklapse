@@ -66,6 +66,11 @@ async def get():
 async def get():
     return FileResponse("templates/sets.html")
 
+# Active Set UI
+@app.get("/active-set", include_in_schema=False)
+async def get():
+    return FileResponse("templates/active_set.html")
+
 # Temp Chat UI to test websocket connection
 @app.get("/wslog", include_in_schema=False)
 async def get():

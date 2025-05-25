@@ -1,0 +1,381 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Lego Timelapse - Set Current Active Set</title>
+  <!-- Bootstrap CSS -->
+  <link href="https://stackpath.bootstrapcdn.com/bootstrap/4.5.2/css/bootstrap.min.css" rel="stylesheet">
+  <style>
+    .card {
+      margin-top: 20px;
+      box-shadow: 0 4px 8px 0 rgba(0,0,0,0.2);
+    }
+    .card-header {
+      background-color: #f8f9fa;
+      font-weight: bold;
+    }
+    .btn-primary {
+      margin-top: 20px;
+    }
+    .form-group {
+      margin-bottom: 20px;
+    }
+    .alert {
+      margin-top: 20px;
+    }
+  </style>
+</head>
+<body>
+
+<div class="container">
+  <div class="row">
+    <div class="col">
+      <h1><a href="/">Lego Timelapse</a> - Set Active Set</h1>
+    </div>
+  </div>
+  
+  <div class="card">
+    <div class="card-header">
+      Select Active Set and Phase
+    </div>
+    <div class="card-body">
+      <div class="form-group">
+        <label for="set_select"><strong>Select LEGO Set:</strong></label>
+        <select id="set_select" class="form-control">
+          <option value="">Select a Set</option>
+          <!-- Sets will be populated dynamically -->
+        </select>
+      </div>
+      
+      <div class="form-group">
+        <label for="phase_select"><strong>Select Phase:</strong></label>
+        <select id="phase_select" class="form-control">
+          <option value="sort">Sorting</option>
+          <option value="build" selected>Building</option>
+          <option value="build1">Build Alternate 1</option>
+          <option value="build2">Build Alternate 2</option>
+          <option value="build3">Build Alternate 3</option>
+          <option value="installing_lights">Installing Lights</option>
+          <option value="disassemble">Disassembling</option>
+        </select>
+      </div>
+      
+      <div class="form-group">
+        <label for="instruction_select"><strong>Select Instruction (Optional):</strong></label>
+        <select id="instruction_select" class="form-control">
+          <option value="">Select a Set First</option>
+          <!-- Instructions will be populated dynamically -->
+        </select>
+        <small class="form-text text-muted">Instructions are optional for sets without digital versions</small>
+      </div>
+
+      <button id="set_active" class="btn btn-primary">Set as Active</button>
+      
+      <div id="status_message" class="alert alert-success" style="display: none;"></div>
+    </div>
+  </div>
+  
+  <div class="card mt-4">
+    <div class="card-header">
+      Current Active Set
+    </div>
+    <div class="card-body">
+      <div id="current_active">
+        <p><strong>Set:</strong> <span id="current_set">Loading...</span></p>
+        <p><strong>Phase:</strong> <span id="current_phase">Loading...</span></p>
+        <p><strong>Instruction:</strong> <span id="current_instruction">Loading...</span></p>
+        <p><strong>Page:</strong> <span id="current_page">Loading...</span></p>
+      </div>
+    </div>
+  </div>
+  
+  <div class="mt-3">
+    <a href="/control" class="btn btn-secondary">Go to Control Panel</a>
+    <a href="/viewer" class="btn btn-info">Go to Viewer</a>
+  </div>
+</div>
+
+<!-- Bootstrap JS -->
+<script src="https://code.jquery.com/jquery-3.5.1.slim.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/@popperjs/core@2.5.3/dist/umd/popper.min.js"></script>
+<script src="https://stackpath.bootstrapcdn.com/bootstrap/4.5.2/js/bootstrap.min.js"></script>
+
+<script>
+  // Global variables
+  let sets = [];
+  let client_id = Date.now();
+  
+  // Load sets on page load
+  document.addEventListener('DOMContentLoaded', async () => {
+    // Fetch all sets
+    await fetchSets();
+    
+    // Load current status
+    await getCurrentStatus();
+    
+    // Set up event listeners
+    setupEventListeners();
+    
+    // Set up WebSocket for real-time updates
+    setupWebSocket();
+  });
+  
+  // Fetch all sets from the API
+  async function fetchSets() {
+    try {
+      const response = await fetch('/api/sets');
+      if (!response.ok) {
+        throw new Error('Failed to fetch sets');
+      }
+      
+      const data = await response.json();
+      sets = data.sets;
+      
+      // Populate the set dropdown
+      populateSetDropdown();
+    } catch (error) {
+      console.error('Error fetching sets:', error);
+      showStatusMessage('Failed to load sets', 'danger');
+    }
+  }
+  
+  // Populate the set dropdown with available sets
+  function populateSetDropdown() {
+    const setSelect = document.getElementById('set_select');
+    
+    // Clear existing options except the first one
+    while (setSelect.options.length > 1) {
+      setSelect.remove(1);
+    }
+    
+    // Add sets to dropdown
+    sets.forEach(set => {
+      const option = document.createElement('option');
+      option.value = set.id;
+      option.textContent = `${set.name} (${set.id})`;
+      setSelect.appendChild(option);
+    });
+  }
+  
+  // Populate instruction dropdown based on selected set
+  function populateInstructionDropdown(setId) {
+    const instructionSelect = document.getElementById('instruction_select');
+    
+    // Clear existing options
+    instructionSelect.innerHTML = '';
+    
+    if (!setId) {
+      // Default option when no set is selected
+      const defaultOption = document.createElement('option');
+      defaultOption.value = '';
+      defaultOption.textContent = 'Select a Set First';
+      instructionSelect.appendChild(defaultOption);
+      return;
+    }
+    
+    // Find the selected set
+    const selectedSet = sets.find(set => set.id === setId);
+    if (!selectedSet || !selectedSet.instructions || selectedSet.instructions.length === 0) {
+      // Add an option indicating no instructions are available
+      const noInstructionsOption = document.createElement('option');
+      noInstructionsOption.value = '';
+      noInstructionsOption.textContent = 'No digital instructions available';
+      instructionSelect.appendChild(noInstructionsOption);
+      
+      // Add an explanatory message
+      const instructionNote = document.createElement('option');
+      instructionNote.disabled = true;
+      instructionNote.textContent = '(You can proceed without selecting instructions)';
+      instructionSelect.appendChild(instructionNote);
+      return;
+    }
+    
+    // Default option when set has instructions
+    const selectOption = document.createElement('option');
+    selectOption.value = '';
+    selectOption.textContent = 'Select an Instruction (Optional)';
+    instructionSelect.appendChild(selectOption);
+    
+    // Add instructions to dropdown
+    selectedSet.instructions.forEach((instruction, index) => {
+      const option = document.createElement('option');
+      option.value = instruction;
+      option.textContent = `${index + 1} - ${instruction}`;
+      instructionSelect.appendChild(option);
+    });
+    
+    // Select first instruction by default if available
+    if (selectedSet.instructions.length > 0) {
+      // We'll keep the "Select an Instruction" as the default,
+      // but we could select the first instruction if preferred
+      // instructionSelect.value = selectedSet.instructions[0];
+    }
+  }
+  
+  // Get current status from API
+  async function getCurrentStatus() {
+    try {
+      const response = await fetch('/api/status');
+      if (!response.ok) {
+        throw new Error('Failed to fetch status');
+      }
+      
+      const data = await response.json();
+      updateStatusDisplay(data);
+    } catch (error) {
+      console.error('Error fetching current status:', error);
+      document.getElementById('current_set').textContent = 'Error loading status';
+    }
+  }
+  
+  // Update the status display with the current active set
+  function updateStatusDisplay(data) {
+    document.getElementById('current_set').textContent = data.set;
+    document.getElementById('current_phase').textContent = data.phase;
+    
+    // Handle instruction display
+    const instructionId = data.document.split('/').pop();
+    if (instructionId && instructionId !== 'no-instructions') {
+      document.getElementById('current_instruction').textContent = instructionId;
+    } else {
+      document.getElementById('current_instruction').textContent = 'None (No Digital Instructions)';
+    }
+    
+    document.getElementById('current_page').textContent = data.page;
+    
+    // Optionally select the current set and phase in the dropdowns
+    if (data.set) {
+      document.getElementById('set_select').value = data.set;
+      document.getElementById('phase_select').value = data.phase;
+      populateInstructionDropdown(data.set);
+      
+      // Set the instruction if it exists and isn't the placeholder
+      if (instructionId && instructionId !== 'no-instructions') {
+        const instructionSelect = document.getElementById('instruction_select');
+        
+        // Check if the option exists before setting it
+        const optionExists = Array.from(instructionSelect.options).some(option => option.value === instructionId);
+        if (optionExists) {
+          instructionSelect.value = instructionId;
+        }
+      }
+    }
+  }
+  
+  // Set up event listeners
+  function setupEventListeners() {
+    // Set selection change
+    document.getElementById('set_select').addEventListener('change', (event) => {
+      populateInstructionDropdown(event.target.value);
+    });
+    
+    // Set active button
+    document.getElementById('set_active').addEventListener('click', setActiveSet);
+  }
+  
+  // Set the active set based on the selections
+  async function setActiveSet() {
+    const setId = document.getElementById('set_select').value;
+    const phase = document.getElementById('phase_select').value;
+    const instruction = document.getElementById('instruction_select').value;
+    
+    if (!setId) {
+      showStatusMessage('Please select a set', 'warning');
+      return;
+    }
+    
+    try {
+      // Create the document path - use a default or empty value if no instruction is selected
+      let document = `/instructions/${setId}/`;
+      if (instruction) {
+        document = `/instructions/${setId}/${instruction}`;
+      } else {
+        // Find the selected set to check if it has instructions
+        const selectedSet = sets.find(set => set.id === setId);
+        if (selectedSet && selectedSet.instructions && selectedSet.instructions.length > 0) {
+          // If the set has instructions but none was selected, suggest selecting one
+          showStatusMessage('This set has instructions available. Consider selecting one.', 'info');
+          // Use the first instruction as default
+          document = `/instructions/${setId}/${selectedSet.instructions[0]}`;
+        } else {
+          // For sets with no instructions, use a placeholder
+          document = `/instructions/${setId}/no-instructions`;
+        }
+      }
+      
+      // Send update to the API
+      const response = await fetch('/api/update', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json'
+        },
+        body: JSON.stringify({
+          instructions: {
+            page: 1, // Start at page 1
+            document: document,
+            set: setId,
+            phase: phase
+          },
+          client_id: client_id
+        })
+      });
+      
+      if (!response.ok) {
+        throw new Error('Failed to update active set');
+      }
+      
+      // Show success message
+      showStatusMessage('Active set updated successfully!', 'success');
+      
+      // Refresh status display
+      getCurrentStatus();
+    } catch (error) {
+      console.error('Error setting active set:', error);
+      showStatusMessage('Failed to update active set', 'danger');
+    }
+  }
+  
+  // Show a status message
+  function showStatusMessage(message, type = 'success') {
+    const statusMessage = document.getElementById('status_message');
+    statusMessage.textContent = message;
+    statusMessage.className = `alert alert-${type}`;
+    statusMessage.style.display = 'block';
+    
+    // Hide message after 5 seconds
+    setTimeout(() => {
+      statusMessage.style.display = 'none';
+    }, 5000);
+  }
+  
+  // Set up WebSocket for real-time updates
+  function setupWebSocket() {
+    const ws = new WebSocket(`ws://${window.location.host}/ws/${client_id}`);
+    
+    ws.onmessage = function(event) {
+      try {
+        const data = JSON.parse(event.data);
+        
+        // If we receive an instruction update
+        if (data.instructions && data.client_id !== client_id) {
+          // Refresh our status display
+          getCurrentStatus();
+        }
+      } catch (error) {
+        console.error('Error processing WebSocket message:', error);
+      }
+    };
+    
+    ws.onclose = function() {
+      console.log('WebSocket connection closed, reconnecting in 5 seconds');
+      setTimeout(setupWebSocket, 5000);
+    };
+    
+    ws.onerror = function(error) {
+      console.error('WebSocket error:', error);
+    };
+  }
+</script>
+</body>
+</html>
