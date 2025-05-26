@@ -7,6 +7,58 @@
   <!-- Bootstrap CSS -->
   <link href="https://stackpath.bootstrapcdn.com/bootstrap/4.5.2/css/bootstrap.min.css" rel="stylesheet">
   <script src="https://mozilla.github.io/pdf.js/build/pdf.mjs" type="module"></script>
+  <style>
+    #monitor-status {
+      border-radius: 5px;
+      box-shadow: 0 2px 5px rgba(0,0,0,0.1);
+    }
+    #monitor-status .card-header {
+      background-color: #f8f9fa;
+      font-weight: bold;
+    }
+    .text-success {
+      color: #28a745;
+      font-weight: bold;
+    }
+    .text-danger {
+      color: #dc3545;
+      font-weight: bold;
+    }
+    .text-warning {
+      color: #ffc107;
+      font-weight: bold;
+    }
+    #monitor-errors {
+      max-height: 150px;
+      overflow-y: auto;
+      font-size: 0.9rem;
+    }
+    #latest-timelapse.alert {
+      border: 2px solid #dc3545;
+    }
+    .status-indicator {
+      display: inline-block;
+      width: 10px;
+      height: 10px;
+      border-radius: 50%;
+      margin-right: 5px;
+    }
+    .status-indicator.online {
+      background-color: #28a745;
+    }
+    .status-indicator.offline {
+      background-color: #dc3545;
+    }
+    /* Pulsating effect for active status indicator */
+    @keyframes pulse {
+      0% { transform: scale(1); opacity: 1; }
+      50% { transform: scale(1.2); opacity: 0.7; }
+      100% { transform: scale(1); opacity: 1; }
+    }
+    .status-indicator.online {
+      animation: pulse 2s infinite;
+    }
+  </style>
 </head>
 <body>
 
@@ -65,6 +117,41 @@
         </select>
         <!-- Button to start timelapse -->
         <button id="toggle_timelapse">Start</button>
+        
+        <!-- Camera Monitor Status Display -->
+        <div id="monitor-status" class="card mt-3">
+          <div class="card-header d-flex justify-content-between align-items-center">
+            <span>Camera Monitor Status</span>
+            <div>
+              <span class="status-indicator offline" id="monitor-status-indicator"></span>
+              <span id="monitor-status-text">Offline</span>
+            </div>
+          </div>
+          <div class="card-body">
+            <div class="row">
+              <div class="col-6">
+                <p><strong>Status:</strong> <span id="monitor-running-status">Unknown</span></p>
+                <p><strong>Camera:</strong> <span id="monitor-camera-status">Unknown</span></p>
+                <p><strong>Set:</strong> <span id="monitor-set">Unknown</span></p>
+                <p><strong>Phase:</strong> <span id="monitor-phase">Unknown</span></p>
+              </div>
+              <div class="col-6">
+                <p><strong>Capture Count:</strong> <span id="monitor-count">0</span></p>
+                <p><strong>Last Capture:</strong> <span id="monitor-last-capture">Never</span></p>
+                <p><strong>Last Update:</strong> <span id="monitor-last-update">Never</span></p>
+              </div>
+            </div>
+            <div class="row">
+              <div class="col-12">
+                <div class="alert alert-danger mt-2 d-none" id="monitor-errors">
+                  <strong>Errors:</strong>
+                  <ul id="monitor-error-list">
+                  </ul>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
       </div>
     </div>
   </div>
@@ -381,6 +468,82 @@
   var ws_reconnect_interval = 1000;
   var ws
   
+  // Function to fetch and update the monitor status display
+  function updateMonitorStatusDisplay() {
+    fetch('/api/monitor/status')
+      .then(response => {
+        if (!response.ok) {
+          throw new Error('Network response was not ok');
+        }
+        return response.json();
+      })
+      .then(data => {
+        // Update status indicators
+        document.getElementById('monitor-running-status').textContent = data.running ? 'Running' : 'Stopped';
+        document.getElementById('monitor-running-status').className = data.running ? 'text-success' : 'text-danger';
+        
+        document.getElementById('monitor-camera-status').textContent = data.camera_connected ? 'Connected' : 'Disconnected';
+        document.getElementById('monitor-camera-status').className = data.camera_connected ? 'text-success' : 'text-danger';
+        
+        // Update overall status indicator
+        const statusIndicator = document.getElementById('monitor-status-indicator');
+        const statusText = document.getElementById('monitor-status-text');
+        
+        if (data.running && data.camera_connected) {
+          statusIndicator.className = 'status-indicator online';
+          statusText.textContent = 'Online';
+          statusText.className = 'text-success';
+        } else if (data.running && !data.camera_connected) {
+          statusIndicator.className = 'status-indicator offline';
+          statusText.textContent = 'No Camera';
+          statusText.className = 'text-warning';
+        } else {
+          statusIndicator.className = 'status-indicator offline';
+          statusText.textContent = 'Offline';
+          statusText.className = 'text-danger';
+        }
+        
+        document.getElementById('monitor-set').textContent = data.current_set || 'Unknown';
+        document.getElementById('monitor-phase').textContent = data.current_phase || 'Unknown';
+        document.getElementById('monitor-count').textContent = data.capture_count || '0';
+        
+        // Format timestamps or show 'Never' if null
+        const formatTime = (timestamp) => {
+          if (!timestamp) return 'Never';
+          const date = new Date(timestamp * 1000); // Convert from Unix timestamp to JavaScript Date
+          return date.toLocaleString();
+        };
+        
+        document.getElementById('monitor-last-capture').textContent = formatTime(data.last_capture);
+        document.getElementById('monitor-last-update').textContent = formatTime(data.last_update);
+        
+        // Handle errors
+        const errorList = document.getElementById('monitor-error-list');
+        const errorContainer = document.getElementById('monitor-errors');
+        
+        if (data.errors && data.errors.length > 0) {
+          errorContainer.classList.remove('d-none');
+          errorList.innerHTML = '';
+          data.errors.forEach(error => {
+            const li = document.createElement('li');
+            li.textContent = error;
+            errorList.appendChild(li);
+          });
+        } else {
+          errorContainer.classList.add('d-none');
+        }
+      })
+      .catch(error => {
+        console.error('Error fetching monitor status:', error);
+      });
+  }
+  
+  // Initial status fetch
+  updateMonitorStatusDisplay();
+  
+  // Fetch monitor status every 5 seconds
+  setInterval(updateMonitorStatusDisplay, 5000);
+  
   function connectWebSocket() {
     ws = new WebSocket(`ws://${window.location.host}/ws/${client_id}`);
 
@@ -398,6 +561,64 @@
         };
 
         last_timelapse_timestamp = data.timelapse.timestamp;
+      }
+      
+      // Update monitor status if we receive a status update via websocket
+      if (data.monitor_status) {
+        // Update all the status display elements
+        document.getElementById('monitor-running-status').textContent = data.monitor_status.running ? 'Running' : 'Stopped';
+        document.getElementById('monitor-running-status').className = data.monitor_status.running ? 'text-success' : 'text-danger';
+        
+        document.getElementById('monitor-camera-status').textContent = data.monitor_status.camera_connected ? 'Connected' : 'Disconnected';
+        document.getElementById('monitor-camera-status').className = data.monitor_status.camera_connected ? 'text-success' : 'text-danger';
+        
+        // Update overall status indicator
+        const statusIndicator = document.getElementById('monitor-status-indicator');
+        const statusText = document.getElementById('monitor-status-text');
+        
+        if (data.monitor_status.running && data.monitor_status.camera_connected) {
+          statusIndicator.className = 'status-indicator online';
+          statusText.textContent = 'Online';
+          statusText.className = 'text-success';
+        } else if (data.monitor_status.running && !data.monitor_status.camera_connected) {
+          statusIndicator.className = 'status-indicator offline';
+          statusText.textContent = 'No Camera';
+          statusText.className = 'text-warning';
+        } else {
+          statusIndicator.className = 'status-indicator offline';
+          statusText.textContent = 'Offline';
+          statusText.className = 'text-danger';
+        }
+        
+        document.getElementById('monitor-set').textContent = data.monitor_status.current_set || 'Unknown';
+        document.getElementById('monitor-phase').textContent = data.monitor_status.current_phase || 'Unknown';
+        document.getElementById('monitor-count').textContent = data.monitor_status.capture_count || '0';
+        
+        // Format timestamps
+        const formatTime = (timestamp) => {
+          if (!timestamp) return 'Never';
+          const date = new Date(timestamp * 1000);
+          return date.toLocaleString();
+        };
+        
+        document.getElementById('monitor-last-capture').textContent = formatTime(data.monitor_status.last_capture);
+        document.getElementById('monitor-last-update').textContent = formatTime(data.monitor_status.last_update);
+        
+        // Handle errors
+        const errorList = document.getElementById('monitor-error-list');
+        const errorContainer = document.getElementById('monitor-errors');
+        
+        if (data.monitor_status.errors && data.monitor_status.errors.length > 0) {
+          errorContainer.classList.remove('d-none');
+          errorList.innerHTML = '';
+          data.monitor_status.errors.forEach(error => {
+            const li = document.createElement('li');
+            li.textContent = error;
+            errorList.appendChild(li);
+          });
+        } else {
+          errorContainer.classList.add('d-none');
+        }
       }
       // Update the document and page number if theres a page update and it's not from the current client
       if (data.instructions && data.client_id != client_id) {

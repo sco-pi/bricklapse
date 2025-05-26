@@ -87,6 +87,24 @@ logging.basicConfig(
 )
 logger = logging.getLogger('timelapse_monitor')
 
+def update_monitor_status(api_host, status_data):
+    """
+    Send status update to the server.
+    """
+    try:
+        response = requests.post(
+            f"{api_host}/api/monitor/update",
+            json=status_data,
+            timeout=5
+        )
+        if response.status_code != 200:
+            logger.warning(f"Failed to update monitor status: HTTP {response.status_code}")
+        return response.status_code == 200
+    except requests.RequestException as e:
+        logger.warning(f"Error updating monitor status: {e}")
+        return False
+
+
 def get_current_status(api_host):
     """
     Fetch the current set and phase from the API.
@@ -127,7 +145,6 @@ def initialize_camera():
             else:
                 logger.error("Max retries reached. Could not initialize camera.")
                 return None
-
 
 def get_last_file_number(directory, file_pattern="*.jpg"):
     """Find the highest numbered file in the directory and return the next number."""
@@ -209,6 +226,21 @@ def capture_loop(camera, count, stop_event, status_change_event):
 
     logger.info(f"Starting capture loop for {SET_NUMBER}/{PHASE} from count {count}")
     
+    # Update monitor status to show we're actively capturing
+    update_monitor_status(API_HOST, {
+        "running": True,
+        "camera_connected": True,
+        "current_set": SET_NUMBER,
+        "current_phase": PHASE,
+        "capture_count": count,
+        "errors": []
+    })
+    
+    # Track errors for status reporting
+    recent_errors = []
+    last_status_update = time.time()
+    status_update_interval = 10  # seconds
+    
     while not (stop_event.is_set() or status_change_event.is_set()):
         try:
             event_type, event_data = camera.wait_for_event(timeout)
@@ -220,6 +252,8 @@ def capture_loop(camera, count, stop_event, status_change_event):
                     target_path = os.path.join(WORK_DIR, f"frame{count:05d}.jpg")
                     logger.info(f"Image is being saved to {target_path}")
                     cam_file.save(target_path)
+                    
+                    current_time = time.time()
 
                     # Send update to the server
                     update = {
@@ -227,7 +261,7 @@ def capture_loop(camera, count, stop_event, status_change_event):
                             "set_number": SET_NUMBER,
                             "phase": PHASE,
                             "filename": f"frame{count:05d}.jpg",
-                            "timestamp": time.time(),
+                            "timestamp": current_time,
                             "count": count
                         }
                     }
@@ -235,23 +269,63 @@ def capture_loop(camera, count, stop_event, status_change_event):
                         response = requests.post(f"{API_HOST}/api/update", json=update, timeout=5)
                         if response.status_code != 200:
                             logger.warning(f"Failed to update server: HTTP {response.status_code}")
+                            recent_errors.append(f"Failed server update: HTTP {response.status_code}")
                     except requests.RequestException as e:
                         logger.warning(f"Error updating server: {e}")
+                        recent_errors.append(f"Server communication error: {str(e)}")
+
+                    # Update monitor status after capture
+                    update_monitor_status(API_HOST, {
+                        "running": True, 
+                        "camera_connected": True,
+                        "last_capture": current_time,
+                        "current_set": SET_NUMBER,
+                        "current_phase": PHASE,
+                        "capture_count": count,
+                        "errors": recent_errors[-5:] if recent_errors else []  # Keep only the 5 most recent errors
+                    })
+                    recent_errors = []  # Clear errors after successful update
 
                     count += 1
                 except gp.GPhoto2Error as e:
-                    logger.error(f"Error processing camera file: {e}")
+                    error_msg = f"Error processing camera file: {e}"
+                    logger.error(error_msg)
+                    recent_errors.append(error_msg)
             
             elif event_type == gp.GP_EVENT_TIMEOUT:
                 # Just a timeout, continue the loop
                 pass
                 
+            # Periodically update status even if no new captures
+            if time.time() - last_status_update > status_update_interval:
+                update_monitor_status(API_HOST, {
+                    "running": True,
+                    "camera_connected": True,
+                    "current_set": SET_NUMBER,
+                    "current_phase": PHASE,
+                    "capture_count": count,
+                    "errors": recent_errors[-5:] if recent_errors else []
+                })
+                last_status_update = time.time()
+                
         except gp.GPhoto2Error as e:
-            logger.error(f"Camera error in capture loop: {e}")
+            error_msg = f"Camera error in capture loop: {e}"
+            logger.error(error_msg)
+            update_monitor_status(API_HOST, {
+                "running": True,
+                "camera_connected": False,
+                "errors": [error_msg]
+            })
             return False
         except Exception as e:
-            logger.error(f"Unexpected error in capture loop: {e}")
+            error_msg = f"Unexpected error in capture loop: {e}"
+            logger.error(error_msg)
             logger.error(traceback.format_exc())
+            update_monitor_status(API_HOST, {
+                "running": True,
+                "camera_connected": False,
+                "errors": [error_msg]
+            })
             return False
     
     return True
@@ -271,6 +345,16 @@ def main():
     # Shared reference for the current set and phase
     current_set_phase = [SET_NUMBER, PHASE]
     
+    # Update the monitor status to show we're starting up
+    update_monitor_status(API_HOST, {
+        "running": True,
+        "camera_connected": False,
+        "current_set": SET_NUMBER,
+        "current_phase": PHASE,
+        "capture_count": 0,
+        "errors": []
+    })
+    
     try:
         # Start the status monitor thread
         monitor_thread = threading.Thread(
@@ -286,6 +370,12 @@ def main():
             camera = initialize_camera()
             if not camera:
                 logger.error("Failed to initialize camera, waiting before retry...")
+                # Update status to show camera connection failed
+                update_monitor_status(API_HOST, {
+                    "running": True,
+                    "camera_connected": False,
+                    "errors": ["Failed to initialize camera, retrying..."]
+                })
                 time.sleep(RETRY_DELAY * 2)
                 continue
                 
@@ -294,6 +384,15 @@ def main():
             
             # Clear any pending status change events
             status_change_event.clear()
+            
+            # Update status to show successful camera connection
+            update_monitor_status(API_HOST, {
+                "running": True,
+                "camera_connected": True,
+                "current_set": SET_NUMBER,
+                "current_phase": PHASE,
+                "capture_count": count
+            })
             
             # Enter the capture loop
             success = capture_loop(camera, count, stop_event, status_change_event)
@@ -304,6 +403,14 @@ def main():
                 # Update the work directory
                 WORK_DIR = f"/mnt/legotimelapse/captures/{SET_NUMBER}/{PHASE}"
                 
+                # Update status to show phase/set change
+                update_monitor_status(API_HOST, {
+                    "running": True,
+                    "camera_connected": True,
+                    "current_set": SET_NUMBER,
+                    "current_phase": PHASE
+                })
+                
                 # Close the camera to reinitialize with clean state
                 try:
                     camera.exit()
@@ -313,6 +420,12 @@ def main():
             
             elif not success:
                 logger.warning("Capture loop failed, will reinitialize")
+                # Update status to show failure
+                update_monitor_status(API_HOST, {
+                    "running": True,
+                    "camera_connected": False,
+                    "errors": ["Capture loop failed, reinitializing..."]
+                })
                 time.sleep(RETRY_DELAY)
                 
                 # Try to clean up the camera
@@ -326,7 +439,18 @@ def main():
     except Exception as e:
         logger.error(f"Unexpected error in main: {e}")
         logger.error(traceback.format_exc())
+        # Update status with critical error
+        update_monitor_status(API_HOST, {
+            "running": False,
+            "camera_connected": False,
+            "errors": [f"Critical error: {str(e)}"]
+        })
     finally:
+        # Update status to show we're shutting down
+        update_monitor_status(API_HOST, {
+            "running": False,
+            "camera_connected": False
+        })
         stop_event.set()
         monitor_thread.join(timeout=5)
         logger.info("Monitor thread joined")
