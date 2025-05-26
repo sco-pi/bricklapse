@@ -60,7 +60,7 @@ def getCropFilter(OutputResolutionX, OutputResolutionY, firstFramePath):
     return crop_width, crop_height, crop_x, crop_y
 
 def createTimelaspe(BasePath, FilePattern, FirstFile, OutputDir, OutputResX, OutputResY, SetNumber, SetName, Phase, TitleTime=5, logoPath='BorrowLapse.png', ExposureSettings=None):
-    stream = ffmpeg.input( f'{BasePath}/{FilePattern}', framerate=60, pattern_type='sequence', start_number=1)
+    stream = ffmpeg.input( f'{BasePath}/{FilePattern}', framerate=60, pattern_type='sequence', start_number=0)
 
     # Crop video to 3200x4000 starting at 1600x0
     #stream = ffmpeg.filter(stream, 'crop', 3200, 4000, 1600, 0)

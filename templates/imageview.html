@@ -42,16 +42,24 @@
       &nbsp;
       <!-- Exposure adjustments -->
       <div class="exposure-controls" style="display: inline-block; margin-left: 10px; margin-right: 10px; padding: 5px; border: 1px solid #ccc; border-radius: 5px;">
-        <label for="brightness">Brightness:</label>
-        <input type="range" id="brightness" min="-100" max="100" value="0" step="5">
-        <span id="brightness_value">0</span>
-        
-        <label for="contrast" style="margin-left: 10px;">Contrast:</label>
-        <input type="range" id="contrast" min="-100" max="100" value="0" step="5">
-        <span id="contrast_value">0</span>
-        
-        <button id="reset_exposure" class="btn btn-secondary btn-sm" style="margin-left: 10px;">Reset</button>
-        <button id="preview_exposure" class="btn btn-info btn-sm" style="margin-left: 5px;">Preview</button>
+        <div class="form-row align-items-center">
+          <div class="col">
+            <label for="brightness">Brightness:</label>
+            <input type="range" id="brightness" min="-100" max="100" value="0" step="1" style="width: 150px;">
+            <input type="number" id="brightness_text" min="-100" max="100" value="0" class="form-control form-control-sm" style="width: 65px; display: inline-block;">
+          </div>
+          
+          <div class="col">
+            <label for="contrast">Contrast:</label>
+            <input type="range" id="contrast" min="-100" max="100" value="0" step="1" style="width: 150px;">
+            <input type="number" id="contrast_text" min="-100" max="100" value="0" class="form-control form-control-sm" style="width: 65px; display: inline-block;">
+          </div>
+          
+          <div class="col-auto">
+            <button id="reset_exposure" class="btn btn-secondary btn-sm">Reset</button>
+            <button id="preview_exposure" class="btn btn-info btn-sm">Preview</button>
+          </div>
+        </div>
       </div>
       &nbsp;
       <!-- Button to start encoding -->
@@ -151,21 +159,39 @@
     });
   });
 
-  // Handle exposure sliders
+  // Handle exposure sliders and text inputs synchronization
   document.getElementById('brightness').addEventListener('input', function() {
-    document.getElementById('brightness_value').textContent = this.value;
+    document.getElementById('brightness_text').value = this.value;
+    updatePreview();
+  });
+  
+  document.getElementById('brightness_text').addEventListener('input', function() {
+    // Ensure value is within range
+    const value = Math.min(100, Math.max(-100, parseInt(this.value) || 0));
+    this.value = value;
+    document.getElementById('brightness').value = value;
+    updatePreview();
   });
   
   document.getElementById('contrast').addEventListener('input', function() {
-    document.getElementById('contrast_value').textContent = this.value;
+    document.getElementById('contrast_text').value = this.value;
+    updatePreview();
+  });
+  
+  document.getElementById('contrast_text').addEventListener('input', function() {
+    // Ensure value is within range
+    const value = Math.min(100, Math.max(-100, parseInt(this.value) || 0));
+    this.value = value;
+    document.getElementById('contrast').value = value;
+    updatePreview();
   });
   
   // Reset exposure controls
   document.getElementById('reset_exposure').addEventListener('click', function() {
     document.getElementById('brightness').value = 0;
+    document.getElementById('brightness_text').value = 0;
     document.getElementById('contrast').value = 0;
-    document.getElementById('brightness_value').textContent = '0';
-    document.getElementById('contrast_value').textContent = '0';
+    document.getElementById('contrast_text').value = 0;
     
     // Remove any applied CSS filters from the images
     var images = document.getElementById('images').getElementsByTagName('img');
@@ -174,12 +200,12 @@
     }
   });
   
-  // Preview exposure adjustments on the displayed images
-  document.getElementById('preview_exposure').addEventListener('click', function() {
-    var brightness = document.getElementById('brightness').value;
-    var contrast = document.getElementById('contrast').value;
+  // Helper function to update preview with current settings
+  function updatePreview() {
+    const brightness = document.getElementById('brightness').value;
+    const contrast = document.getElementById('contrast').value;
     
-    var filterValue = '';
+    let filterValue = '';
     if (brightness != 0) {
       filterValue += `brightness(${100 + parseInt(brightness)}%) `;
     }
@@ -187,46 +213,59 @@
       filterValue += `contrast(${100 + parseInt(contrast)}%)`;
     }
     
-    var images = document.getElementById('images').getElementsByTagName('img');
-    for (var i = 0; i < images.length; i++) {
+    return filterValue;
+  }
+
+  // Preview exposure adjustments on the displayed images
+  document.getElementById('preview_exposure').addEventListener('click', function() {
+    const filterValue = updatePreview();
+    
+    const images = document.getElementById('images').getElementsByTagName('img');
+    for (let i = 0; i < images.length; i++) {
       images[i].style.filter = filterValue;
     }
   });
 
   // Start encoding the images
   document.getElementById('start_encoding').addEventListener('click', function() {
-    var set_id = document.getElementById('set_select').value;
+    const set_id = document.getElementById('set_select').value;
     // Confirm a set is selected
     if (set_id == 'Select Set') {
       alert('Please select a set');
       return;
     }
-    var phase = document.getElementById('phase_select').value;
+    const phase = document.getElementById('phase_select').value;
     // Confirm a phase is selected
     if (phase == 'Select Phase') {
       alert('Please select a phase');
       return;
     }
     
-    // Get exposure settings
-    var brightness = document.getElementById('brightness').value;
-    var contrast = document.getElementById('contrast').value;
+    // Get exposure settings from the text inputs for more precise values
+    const brightness = document.getElementById('brightness_text').value;
+    const contrast = document.getElementById('contrast_text').value;
     
-    fetch('/api/images/' + set_id + '/' + phase + '/encode', {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json'
-      },
-      body: JSON.stringify({ 
-        date: Date.now(),
-        exposure: {
-          brightness: parseInt(brightness),
-          contrast: parseInt(contrast)
-        }
-      })
-    }).then(response => response.json()).then(data => {
-      alert('Encoding started with exposure adjustments');
-    });
+    // Show a confirmation dialog with the current settings
+    if (confirm(`Start encoding with the following settings?\n\nBrightness: ${brightness}\nContrast: ${contrast}`)) {
+      fetch('/api/images/' + set_id + '/' + phase + '/encode', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json'
+        },
+        body: JSON.stringify({ 
+          date: Date.now(),
+          exposure: {
+            brightness: parseInt(brightness),
+            contrast: parseInt(contrast)
+          }
+        })
+      }).then(response => response.json()).then(data => {
+        alert('Encoding started with exposure adjustments');
+      }).catch(error => {
+        console.error('Error starting encoding:', error);
+        alert('Error starting encoding: ' + error.message);
+      });
+    }
   });
 
   // Overlay green bounding box on image to show the area that will be cropped for encoding
