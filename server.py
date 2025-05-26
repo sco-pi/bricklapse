@@ -8,6 +8,7 @@ import yaml
 import shutil
 import os
 import json
+import time
 import gphoto2 as gp
 
 app = FastAPI()
@@ -19,6 +20,18 @@ last_page = 1
 last_document = "/instructions/42158/6501852" # Defaults to the Mars Rover set, need to find a better way to default
 last_set = "42158"
 last_phase = "build"
+
+# Camera monitor status tracking
+camera_monitor_status = {
+    "running": False,
+    "camera_connected": False,
+    "last_update": None,
+    "last_capture": None,
+    "current_set": None,
+    "current_phase": None,
+    "capture_count": 0,
+    "errors": []
+}
 
 templates = Jinja2Templates(directory="templates")
 
@@ -179,6 +192,30 @@ async def update(set_id: int, set: dict):
 @app.get("/api/status")
 async def get():
     return {"page": last_page, "document": last_document, "set": last_set, "phase": last_phase}
+
+# Get camera monitor status
+@app.get("/api/monitor/status")
+async def get_monitor_status():
+    return camera_monitor_status
+
+# Update camera monitor status
+@app.post("/api/monitor/update")
+async def update_monitor_status(request: Request):
+    data = await request.json()
+    global camera_monitor_status
+    
+    # Update only the fields that were provided
+    for key in data:
+        if key in camera_monitor_status:
+            camera_monitor_status[key] = data[key]
+    
+    # Update timestamp automatically
+    camera_monitor_status["last_update"] = time.time()
+    
+    # Broadcast the status update via websockets
+    await manager.broadcast(json.dumps({"monitor_status": camera_monitor_status}))
+    
+    return {"success": True}
 
 # Handle the page update request, taking the page number and instruction number from the json body
 @app.post("/api/update")

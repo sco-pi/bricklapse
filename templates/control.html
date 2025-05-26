@@ -420,6 +420,38 @@
       option.text = set['name'] + ' (' + set['id'] + ')';
       set_select.appendChild(option);
     });
+    // After sets are loaded, if we have a last set from /api/status, select it
+    if (typeof url !== 'undefined' && typeof pageNum !== 'undefined') {
+      fetch('/api/status').then(response => response.json()).then(statusData => {
+        if (statusData.set) {
+          set_select.value = statusData.set;
+          active_set = statusData.set;
+          populateInstructionDropdown(statusData.set);
+          // Try to select the last instruction if available
+          const instruction_select = document.getElementById('instruction_select');
+          let lastInstruction = null;
+          if (statusData.document) {
+            // Extract instruction id from document URL
+            const parts = statusData.document.split('/');
+            if (parts.length > 3) {
+              lastInstruction = parts[3];
+              instruction_select.value = lastInstruction;
+            }
+          }
+          // If we have both set and instruction, load the PDF
+          if (lastInstruction) {
+            url = '/instructions/' + statusData.set + '/' + lastInstruction;
+            pageNum = statusData.page || 1;
+            pdfjsLib.getDocument(url).promise.then(function(pdfDoc_) {
+              pdfDoc = pdfDoc_;
+              document.getElementById('page_count').textContent = pdfDoc.numPages;
+              queueRenderPage(pageNum);
+            });
+            updatePage(pageNum, url);
+          }
+        }
+      });
+    }
   });
 
   // Populate instruction dropdown when the page is loaded as function for reusability
