@@ -1,0 +1,16 @@
+[Unit]
+Description=Bricklapse Camera Monitor
+After=network.target bricklapse-server.service
+Requires=bricklapse-server.service
+
+[Service]
+Type=simple
+User=smurch
+ExecStart=/home/smurch/BrickLapsePython/service/start_monitor.sh
+Restart=always
+
+# Add a delay before starting (10 seconds)
+ExecStartPre=/bin/sleep 10
+
+[Install]
+WantedBy=multi-user.target

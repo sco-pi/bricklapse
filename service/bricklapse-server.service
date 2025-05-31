@@ -1,0 +1,12 @@
+[Unit]
+Description=Bricklapse FastAPI Server
+After=network.target
+
+[Service]
+Type=simple
+User=smurch
+ExecStart=/home/smurch/BrickLapsePython/service/start_server.sh
+Restart=always
+
+[Install]
+WantedBy=multi-user.target
