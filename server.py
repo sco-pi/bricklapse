@@ -1,5 +1,5 @@
 from fastapi import FastAPI, Request, WebSocket, WebSocketDisconnect, UploadFile, File
-from fastapi.responses import HTMLResponse
+from fastapi.responses import HTMLResponse, JSONResponse, StreamingResponse
 from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
 from fastapi.responses import FileResponse
@@ -10,6 +10,23 @@ import os
 import json
 import time
 import gphoto2 as gp
+import subprocess
+import cv2
+import threading
+import io
+from typing import Optional
+from capture_manager import CameraCaptureManager, CameraCaptureError
+
+# Global singleton manager to persist Picamera2 instance
+captureManager = CameraCaptureManager(test_image_path="/tmp/pi_test_image.jpg")
+try:
+    from picamera2 import Picamera2  # Provided by python3-picamera2 package
+    from PIL import Image
+    _PICAMERA2_AVAILABLE = True
+except Exception:  # Pillow or picamera2 may not be installed in venv though system package present
+    _PICAMERA2_AVAILABLE = False
+    Picamera2 = None  # type: ignore
+    Image = None  # type: ignore
 
 app = FastAPI()
 
@@ -94,6 +111,11 @@ async def get():
 @app.get("/images", include_in_schema=False)
 async def get():
     return FileResponse("templates/imageview.html")
+
+# Camera Test UI
+@app.get("/camera-test", include_in_schema=False)
+async def get():
+    return FileResponse("templates/camera_test.html")
 
 # Get specified timelape image for set number and phase
 @app.get("/timelapse/{set_number}/{phase}/{filename}")
@@ -334,6 +356,73 @@ async def previous_page():
     last_page -= 1
     await sendDocumentUpdate(last_page, last_document, "api")
     return {"page": last_page, "document": last_document}
+
+@app.post("/api/capture-test-image")
+async def capture_test_image(request: Request):
+    """Capture a test image using unified capture manager (methods: auto, picamera2, opencv, rpicam, raspistill)."""
+    try:
+        params = {}
+        if request.headers.get('content-type','').startswith('application/json'):
+            params = await request.json()
+    except Exception:
+        params = {}
+    method = params.get('method', 'auto')
+    device_index = int(params.get('device_index', 0))
+    width = params.get('width')
+    height = params.get('height')
+    warmup_frames = int(params.get('warmup_frames', 5))
+
+    try:
+        result = captureManager.capture(method=method, device_index=device_index, width=width, height=height, warmup_frames=warmup_frames)
+        return {
+            "image_url": "/api/test-image",
+            "method_requested": result["method_requested"],
+            "method_used": result["method_used"],
+            "attempts": result["attempts"]
+        }
+    except CameraCaptureError as ce:
+        return JSONResponse(status_code=500, content={
+            "error": str(ce),
+            "method_requested": method,
+            "attempts": []
+        })
+    except Exception as e:
+        return JSONResponse(status_code=500, content={
+            "error": f"Unexpected error: {e}",
+            "method_requested": method,
+            "attempts": []
+        })
+
+@app.get("/api/test-image")
+async def get_test_image():
+    test_image_path = "/tmp/pi_test_image.jpg"
+    if not os.path.exists(test_image_path):
+        return JSONResponse(status_code=404, content={"error": "No test image found"})
+    return FileResponse(test_image_path, media_type="image/jpeg")
+
+@app.get("/api/video-stream")
+async def video_stream():
+    def gen_frames():
+        cap = cv2.VideoCapture(0)
+        if not cap.isOpened():
+            raise RuntimeError("Could not open video device")
+        try:
+            while True:
+                ret, frame = cap.read()
+                if not ret:
+                    continue
+                ret, jpeg = cv2.imencode('.jpg', frame)
+                if not ret:
+                    continue
+                yield (b'--frame\r\n'
+                       b'Content-Type: image/jpeg\r\n\r\n' + jpeg.tobytes() + b'\r\n')
+        finally:
+            cap.release()
+    return StreamingResponse(gen_frames(), media_type='multipart/x-mixed-replace; boundary=frame')
+
+@app.get("/video-stream", include_in_schema=False)
+async def get():
+    return FileResponse("templates/video_stream.html")
 
 @app.websocket("/ws/{client_id}")
 async def websocket_endpoint(websocket: WebSocket, client_id: int):

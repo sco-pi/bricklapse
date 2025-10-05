@@ -1,0 +1,71 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Camera Test - Bricklapse</title>
+  <link href="https://stackpath.bootstrapcdn.com/bootstrap/4.5.2/css/bootstrap.min.css" rel="stylesheet">
+  <style>
+    #test-image {
+      max-width: 100%;
+      border: 2px solid #333;
+      margin-top: 1em;
+    }
+  </style>
+</head>
+<body>
+<div class="container mt-4">
+  <h2><a href="/">Lego Timelapse</a> - Camera Test</h2>
+  <p>Use this page to capture a test image from the Raspberry Pi HQ camera and verify focus/aperture.</p>
+  <div class="form-inline mb-2">
+    <label for="method-select" class="mr-2 font-weight-bold">Method:</label>
+    <select id="method-select" class="form-control mr-3">
+      <option value="auto">auto (priority: picamera2 -> opencv -> rpicam -> raspistill)</option>
+      <option value="picamera2">picamera2 (libcamera native)</option>
+      <option value="opencv">opencv (V4L2)</option>
+      <option value="rpicam">rpicam-still (CLI)</option>
+      <option value="raspistill">raspistill (legacy)</option>
+    </select>
+    <button id="capture-btn" class="btn btn-primary">Capture Test Image</button>
+  </div>
+  <div id="status" class="mt-2"></div>
+  <div id="image-container" class="mt-3"></div>
+</div>
+<script>
+  // Restore last selected method
+  const selectEl = document.getElementById('method-select');
+  const savedMethod = localStorage.getItem('camera_test_method');
+  if (savedMethod) {
+    selectEl.value = savedMethod;
+  }
+  selectEl.addEventListener('change', () => {
+    localStorage.setItem('camera_test_method', selectEl.value);
+  });
+
+  document.getElementById('capture-btn').onclick = function() {
+    document.getElementById('status').textContent = 'Capturing...';
+    const method = selectEl.value;
+    fetch('/api/capture-test-image', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ method })
+    })
+      .then(response => response.json())
+      .then(data => {
+        if (data.image_url) {
+          document.getElementById('status').textContent = 'Image captured!';
+          // Show the image
+          document.getElementById('image-container').innerHTML = `<img id="test-image" src="${data.image_url}?t=${Date.now()}" alt="Test Image" />`;
+        } else {
+          document.getElementById('status').textContent = 'Error: ' + (data.error || 'Unknown error');
+          document.getElementById('image-container').innerHTML = '';
+        }
+      })
+      .catch(err => {
+        document.getElementById('status').textContent = 'Error: ' + err;
+        document.getElementById('image-container').innerHTML = '';
+      });
+  };
+</script>
+</body>
+</html>

@@ -1,0 +1,21 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <title>Live Camera Stream</title>
+  <link href="https://stackpath.bootstrapcdn.com/bootstrap/4.5.2/css/bootstrap.min.css" rel="stylesheet">
+  <style>
+    #video-stream {
+      max-width: 100%;
+      border: 2px solid #333;
+      margin-top: 1em;
+    }
+  </style>
+</head>
+<body>
+<div class="container mt-4">
+  <h2>Live Camera Stream</h2>
+  <p>View the live video from the Raspberry Pi HQ camera below.</p>
+  <img id="video-stream" src="/api/video-stream" alt="Live Video Stream" />
+</div>
+</body>
+</html>
