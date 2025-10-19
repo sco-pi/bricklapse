@@ -256,6 +256,8 @@ def capture_loop_backend(backend: BaseTimelapseCamera, count: int, stop_event, s
     status_update_interval = 10
     interval = INTERVAL if not backend.event_driven else None
     next_capture_time = time.monotonic() + (interval if interval else 0)
+    last_capture_mono = None  # monotonic timestamp of last successful capture
+    prev_capture_enabled = CAPTURE_ENABLED
 
     timeout_ms = 3000
 
@@ -268,6 +270,12 @@ def capture_loop_backend(backend: BaseTimelapseCamera, count: int, stop_event, s
             if now - last_poll > poll_interval:
                 _poll_capture_enabled()
                 last_poll = now
+
+            # Detect transition from paused -> resumed for interval backends
+            if not backend.event_driven and prev_capture_enabled is False and CAPTURE_ENABLED is True:
+                next_capture_time = time.monotonic() + interval
+                logger.info(f"Resume detected; scheduling next capture at {next_capture_time:.3f} (+{interval}s)")
+            prev_capture_enabled = CAPTURE_ENABLED
 
             if not CAPTURE_ENABLED:
                 # When paused, still provide heartbeat updates periodically (without overriding capture_enabled)
@@ -299,12 +307,28 @@ def capture_loop_backend(backend: BaseTimelapseCamera, count: int, stop_event, s
                 # else ignore other events / timeouts
             else:
                 now_mono = time.monotonic()
+                # Prevent burst if we are too far behind (e.g., long pause without reset)
+                behind = now_mono - next_capture_time
+                if behind > interval * 3:  # arbitrarily choose 3x interval as stale threshold
+                    logger.info(f"Behind by {behind:.3f}s (>3x interval); resetting schedule")
+                    next_capture_time = now_mono
+
                 if now_mono >= next_capture_time:
                     target_path = os.path.join(WORK_DIR, f"frame{count:05d}.jpg")
                     ok = backend.capture_next(target_path)
                     current_time = time.time()
                     if ok:
                         _post_capture_status(count, current_time, recent_errors, backend)
+                        # Interval drift / rate logging
+                        if last_capture_mono is not None:
+                            delta = now_mono - last_capture_mono
+                            if delta < interval * 0.7:
+                                logger.warning(f"Capture interval too short: {delta:.3f}s (expected ~{interval}s)")
+                            elif delta > interval * 1.5:
+                                logger.warning(f"Capture interval too long: {delta:.3f}s (expected ~{interval}s)")
+                            else:
+                                logger.debug(f"Capture interval OK: {delta:.3f}s")
+                        last_capture_mono = now_mono
                         count += 1
                         recent_errors = []
                     else:
