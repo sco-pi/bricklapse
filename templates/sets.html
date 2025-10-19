@@ -1,32 +1,64 @@
-<html>
-    <head>
-        <title>Sets</title>
-    </head>
-    <body>
-        <h1><a href="/">Lego Timelapse</a> - Sets</h1>
-        <div id="sets"></div>
-        <br />
-        <input type="text" id="setId" placeholder="Set ID" />
-        <input type="text" id="setName" placeholder="Set Name" />
-        <button id="addSet">Add Set</button>
-        <button id="saveSets">Save</button>
-    </body>
-    <script type="text/javascript">
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Sets</title>
+  <!-- Bootstrap CSS -->
+  <link href="https://stackpath.bootstrapcdn.com/bootstrap/4.5.2/css/bootstrap.min.css" rel="stylesheet">
+</head>
+<body>
+
+<div class="container">
+  <div class="row">
+    <div class="col">
+      <h1><a href="/">Lego Timelapse</a> - Sets</h1>
+    </div>
+  </div>
+  <div class="row">
+    <div class="col">
+      <div id="sets"></div>
+      <br />
+      <div class="form-inline">
+        <input type="text" id="setId" placeholder="Set ID" class="form-control mr-2" />
+        <input type="text" id="setName" placeholder="Set Name" class="form-control mr-2" />
+        <button id="addSet" class="btn btn-primary mr-2">Add Set</button>
+        <button id="saveSets" class="btn btn-success">Save</button>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- Bootstrap JS -->
+<script src="https://code.jquery.com/jquery-3.5.1.slim.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/@popperjs/core@2.5.3/dist/umd/popper.min.js"></script>
+<script src="https://stackpath.bootstrapcdn.com/bootstrap/4.5.2/js/bootstrap.min.js"></script>
+
+<script type="text/javascript">
         fetch('/api/sets').then(response => response.json()).then(data => {
             var sets = data['sets'];
             var sets_div = document.getElementById('sets');
             sets.forEach(set => {
                 var set_div = document.createElement('div');
                 set_div.innerHTML = `<h2>${set['name']} (${set['id']})</h2>`;
+                set_div.className = 'card mb-3';
+                var card_body = document.createElement('div');
+                card_body.className = 'card-body';
+                var title = document.createElement('h5');
+                title.className = 'card-title';
+                title.textContent = `${set['name']} (${set['id']})`;
+                card_body.appendChild(title);
                 var instructions_div = document.createElement('div');
+                instructions_div.className = 'mb-2';
                 set['instructions'].forEach(instruction => {
                     var instruction_div = document.createElement('div');
                     instruction_div.innerHTML = `<a href="/instructions/${set['id']}/${instruction}">${instruction}</a>&nbsp;&nbsp;`;
                     instructions_div.appendChild(instruction_div);
                 });
-                set_div.appendChild(instructions_div);
+                card_body.appendChild(instructions_div);
                 // Add a button to add an instruction
                 var add_instruction_button = document.createElement('button');
+                add_instruction_button.className = 'btn btn-sm btn-primary mr-2';
                 add_instruction_button.textContent = 'Add Instruction';
                 add_instruction_button.onclick = () => {
                     // Prompt the user for the instruction file, upload it to the server, and add it to
@@ -65,9 +97,10 @@
                     };
                     file_input.click();
                 };
-                set_div.appendChild(add_instruction_button);
+                card_body.appendChild(add_instruction_button);
                 // Add a button to delete the set
                 var delete_button = document.createElement('button');
+                delete_button.className = 'btn btn-sm btn-danger';
                 delete_button.textContent = 'Delete Set';
                 delete_button.onclick = () => {
                     fetch(`/api/sets/${set['id']}`, {
@@ -76,7 +109,8 @@
                         set_div.remove();
                     });
                 };
-                set_div.appendChild(delete_button);
+                card_body.appendChild(delete_button);
+                set_div.appendChild(card_body);
                 sets_div.appendChild(set_div);
             });
         });
@@ -104,11 +138,19 @@
                 console.log('Success:', data);
                 var sets_div = document.getElementById('sets');
                 var set_div = document.createElement('div');
-                set_div.innerHTML = `<h2>${setName} (${setId})</h2>`;
+                set_div.className = 'card mb-3';
+                var card_body = document.createElement('div');
+                card_body.className = 'card-body';
+                var title = document.createElement('h5');
+                title.className = 'card-title';
+                title.textContent = `${setName} (${setId})`;
+                card_body.appendChild(title);
                 var instructions_div = document.createElement('div');
-                set_div.appendChild(instructions_div);
+                instructions_div.className = 'mb-2';
+                card_body.appendChild(instructions_div);
                 // Add a button to add an instruction
                 var add_instruction_button = document.createElement('button');
+                add_instruction_button.className = 'btn btn-sm btn-primary mr-2';
                 add_instruction_button.textContent = 'Add Instruction';
                 add_instruction_button.onclick = () => {
                     // Prompt the user for the instruction file, upload it to the server, and add it to
@@ -147,9 +189,10 @@
                     };
                     file_input.click();
                 };
-                set_div.appendChild(add_instruction_button);
+                card_body.appendChild(add_instruction_button);
                 // Add a button to delete the set
                 var delete_button = document.createElement('button');
+                delete_button.className = 'btn btn-sm btn-danger';
                 delete_button.textContent = 'Delete Set';
                 delete_button.onclick = () => {
                     fetch(`/api/sets/${setId}`, {
@@ -158,7 +201,8 @@
                         set_div.remove();
                     });
                 };
-                set_div.appendChild(delete_button);
+                card_body.appendChild(delete_button);
+                set_div.appendChild(card_body);
                 sets_div.appendChild(set_div);
             }).catch(error => {
                 console.error('Error:', error);
@@ -166,4 +210,6 @@
             });
         };
     </script>
+
+</body>
 </html>

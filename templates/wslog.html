@@ -1,20 +1,42 @@
 <!DOCTYPE html>
-<html>
-    <head>
-        <title>Web Socket Log</title>
-    </head>
-    <body>
-        <h1><a href="/">Lego Timelapse</a> - Web Socket Log</h1>
-        <h2>Your ID: <span id="ws-id"></span></h2>
-        <ul id='messages'>
-        </ul>
-        <script>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Web Socket Log</title>
+  <!-- Bootstrap CSS -->
+  <link href="https://stackpath.bootstrapcdn.com/bootstrap/4.5.2/css/bootstrap.min.css" rel="stylesheet">
+</head>
+<body>
+
+<div class="container">
+  <div class="row">
+    <div class="col">
+      <h1><a href="/">Lego Timelapse</a> - Web Socket Log</h1>
+      <h2>Your ID: <span id="ws-id"></span></h2>
+    </div>
+  </div>
+  <div class="row">
+    <div class="col">
+      <ul id='messages' class="list-group">
+      </ul>
+    </div>
+  </div>
+</div>
+
+<!-- Bootstrap JS -->
+<script src="https://code.jquery.com/jquery-3.5.1.slim.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/@popperjs/core@2.5.3/dist/umd/popper.min.js"></script>
+<script src="https://stackpath.bootstrapcdn.com/bootstrap/4.5.2/js/bootstrap.min.js"></script>
+
+<script>
             var client_id = Date.now()
             document.querySelector("#ws-id").textContent = client_id;
             var ws = new WebSocket(`ws://${window.location.host}/ws/${client_id}`);
             ws.onmessage = function(event) {
                 var messages = document.getElementById('messages')
                 var message = document.createElement('li')
+                message.className = 'list-group-item';
                 var content = document.createTextNode(event.data)
                 message.appendChild(content)
                 messages.appendChild(message)
@@ -26,5 +48,6 @@
                 event.preventDefault()
             }
         </script>
-    </body>
+
+</body>
 </html>

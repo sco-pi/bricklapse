@@ -1,4 +1,37 @@
-<script src="https://mozilla.github.io/pdf.js/build/pdf.mjs" type="module"></script>
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Lego Timelapse - Viewer</title>
+  <!-- Bootstrap CSS -->
+  <link href="https://stackpath.bootstrapcdn.com/bootstrap/4.5.2/css/bootstrap.min.css" rel="stylesheet">
+  <script src="https://mozilla.github.io/pdf.js/build/pdf.mjs" type="module"></script>
+</head>
+<body>
+
+<div class="container-fluid">
+  <div class="row">
+    <div class="col">
+      <h1><a href="/">Lego Timelapse</a> - Viewer</h1>
+    </div>
+  </div>
+  <div class="row">
+    <div class="col">
+      <span>Page: <span id="page_num"></span> / <span id="page_count"></span></span>&nbsp;<button id="follow_ws_updates" class="btn btn-primary">Follow Updates</button>
+    </div>
+  </div>
+  <div class="row">
+    <div class="col">
+      <canvas id="the-canvas"></canvas>
+    </div>
+  </div>
+</div>
+
+<!-- Bootstrap JS -->
+<script src="https://code.jquery.com/jquery-3.5.1.slim.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/@popperjs/core@2.5.3/dist/umd/popper.min.js"></script>
+<script src="https://stackpath.bootstrapcdn.com/bootstrap/4.5.2/js/bootstrap.min.js"></script>
 
 <script type="module">
   // If absolute URL from the remote server is provided, configure the CORS
@@ -159,10 +192,5 @@
   connectWebSocket();
 </script>
 
-<h1><a href="/">Lego Timelapse</a> - Viewer</h1>
-
-<div>
-  <span>Page: <span id="page_num"></span> / <span id="page_count"></span></span>&nbsp;<button id="follow_ws_updates" class="btn btn-primary">Follow Updates</button>
-</div>
-
-<canvas id="the-canvas"></canvas>
+</body>
+</html>
