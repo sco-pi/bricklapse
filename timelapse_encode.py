@@ -6,6 +6,8 @@ import _thread
 import time
 import rel
 import json
+import threading
+import traceback
 
 API_HOST = '127.0.0.1:8000'
 BASE_DIR = '/mnt/legotimelapse'
@@ -151,25 +153,60 @@ def createTimelaspe(BasePath, FilePattern, FirstFile, OutputDir, OutputResX, Out
     # No -s parameter needed; already scaled
     stream = ffmpeg.output(stream, f'{OutputDir}/{SetNumber} - {SetName} - {Phase}-temp.mp4', c='libx264', crf=17, pix_fmt='yuv420p')
 
-    ffmpeg.run(stream, overwrite_output=True)
+    try:
+        print(f"[ENCODE] Starting ffmpeg for set {SetNumber} phase {Phase}")
+        ffmpeg.run(stream, overwrite_output=True)
+        print(f"[ENCODE] Completed set {SetNumber} phase {Phase}")
+    except ffmpeg.Error as e:
+        print(f"[ENCODE][ERROR] ffmpeg failed: {e}")
+        if e.stderr:
+            try:
+                print(e.stderr.decode('utf-8', errors='ignore'))
+            except Exception:
+                print(str(e.stderr))
+    except Exception as e:
+        print(f"[ENCODE][ERROR] Unexpected: {e}\n{traceback.format_exc()}")
+
+# Concurrency guard
+_encode_lock = threading.Lock()
+_encode_active = False
+
+def safe_start_encode(params):
+    global _encode_active
+    if not _encode_lock.acquire(blocking=False):
+        print("[ENCODE] Another encode in progress, skipping new request")
+        return
+    _encode_active = True
+    def _runner():
+        try:
+            createTimelaspe(**params)
+        finally:
+            global _encode_active
+            _encode_active = False
+            _encode_lock.release()
+            print("[ENCODE] Encode thread released lock")
+    threading.Thread(target=_runner, daemon=True).start()
 
 # Subscribe to websocker server to get requests to encode timelapse videos and start the createTimelapse function with the parameters from the request
 # Websockets on ws://{API_HOST}/ws/{client_id}
 def on_message(ws, message):
     print(message)
-    data = json.loads(message)
-    # Check if message has an encode key
-    if data["encode"]:
+    try:
+        data = json.loads(message)
+    except json.JSONDecodeError:
+        print("[WS] Received non-JSON message")
+        return
+    if not isinstance(data, dict):
+        print("[WS] Unexpected message type")
+        return
+    if "encode" in data and data["encode"]:
         encode_data = data["encode"]
-        # Check if the encode data has the required keys
-        if "set_number" in encode_data and "set_name" in encode_data and "phase" in encode_data:
-            # Check for exposure settings
-            exposure_settings = None
-            if "exposure" in encode_data:
-                exposure_settings = encode_data["exposure"]
+        required = {"set_number", "set_name", "phase"}
+        if required.issubset(encode_data.keys()):
+            exposure_settings = encode_data.get("exposure")
+            if exposure_settings:
                 print(f"Received exposure settings: {exposure_settings}")
-                
-            createTimelaspe(
+            params = dict(
                 BasePath=f'{BASE_DIR}/captures/{encode_data["set_number"]}/{encode_data["phase"]}',
                 FilePattern="frame%05d.jpg",
                 FirstFile="frame00001.jpg",
@@ -181,28 +218,38 @@ def on_message(ws, message):
                 Phase=encode_data["phase"],
                 ExposureSettings=exposure_settings
             )
+            safe_start_encode(params)
         else:
             print("Missing required keys in encode data")
     else:
         print("Missing encode key in message")
 
 def on_error(ws, error):
-    print(error)
+    print(f"[WS][ERROR] {error}")
 
 def on_close(ws, close_status_code, close_msg):
-    print("### closed ###")
+    print(f"[WS] Closed code={close_status_code} msg={close_msg}")
 
 def on_open(ws):
-    print("Opened connection")
+    print("[WS] Opened connection")
+
+def start_ws_loop():
+    while True:
+        try:
+            ws = websocket.WebSocketApp(f'ws://{API_HOST}/ws/1321',
+                                        on_open=on_open,
+                                        on_message=on_message,
+                                        on_error=on_error,
+                                        on_close=on_close)
+            ws.run_forever(dispatcher=rel, reconnect=5, ping_interval=30, ping_timeout=10)
+            rel.signal(2, rel.abort)
+            rel.dispatch()
+        except BrokenPipeError:
+            print("[WS][ERROR] Broken pipe encountered; reconnecting in 5s")
+            time.sleep(5)
+        except Exception as e:
+            print(f"[WS][ERROR] Loop exception: {e}\n{traceback.format_exc()}")
+            time.sleep(5)
 
 if __name__ == "__main__":
-    #websocket.enableTrace(True)
-    ws = websocket.WebSocketApp(f'ws://{API_HOST}/ws/1321',
-                              on_open=on_open,
-                              on_message=on_message,
-                              on_error=on_error,
-                              on_close=on_close)
-
-    ws.run_forever(dispatcher=rel, reconnect=5)  # Set dispatcher to automatic reconnection, 5 second reconnect delay if connection closed unexpectedly
-    rel.signal(2, rel.abort)  # Keyboard Interrupt
-    rel.dispatch()
+    start_ws_loop()
