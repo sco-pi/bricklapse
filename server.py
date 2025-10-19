@@ -47,7 +47,9 @@ camera_monitor_status = {
     "current_set": None,
     "current_phase": None,
     "capture_count": 0,
-    "errors": []
+    "errors": [],
+    "backend": None,
+    "capture_enabled": False  # new field allowing UI to pause/resume capture
 }
 
 templates = Jinja2Templates(directory="templates")
@@ -238,6 +240,24 @@ async def update_monitor_status(request: Request):
     await manager.broadcast(json.dumps({"monitor_status": camera_monitor_status}))
     
     return {"success": True}
+
+@app.post("/api/monitor/capture")
+async def set_capture_state(request: Request):
+    """Enable or disable active capture from the UI.
+
+    JSON body: {"enabled": true|false}
+    Broadcasts updated monitor status via websocket.
+    """
+    global camera_monitor_status
+    try:
+        data = await request.json()
+        enabled = bool(data.get("enabled"))
+        camera_monitor_status["capture_enabled"] = enabled
+        camera_monitor_status["last_update"] = time.time()
+        await manager.broadcast(json.dumps({"monitor_status": camera_monitor_status}))
+        return {"success": True, "capture_enabled": enabled}
+    except Exception as e:
+        return JSONResponse(status_code=400, content={"error": f"Invalid request: {e}"})
 
 # Handle the page update request, taking the page number and instruction number from the json body
 @app.post("/api/update")

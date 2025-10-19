@@ -7,7 +7,7 @@ import time
 import rel
 import json
 
-API_HOST = '192.168.1.60:8000'
+API_HOST = '127.0.0.1:8000'
 BASE_DIR = '/mnt/legotimelapse'
 OUTPUT_RESOLUTION = '1080x1350' # 4:5 aspect ratio for Instagram
 
@@ -29,6 +29,33 @@ def phaseToText(phase):
     elif phase == 'sort':
         phase_text = 'Sorting'
     return phase_text
+
+def calculateOverlayDimensions(output_width, output_height,
+                               font_pct=0.055,            # 5.5% of height (previously 7%)
+                               margin_pct=0.025,          # 2.5% margins
+                               line_gap_font_pct=0.18,    # gap below first line = 18% of font size
+                               logo_width_pct=0.15        # logo width ~15% of output width
+                               ):
+    """Calculate overlay dimensions relative to FINAL scaled output resolution.
+
+    font_pct: percentage of output HEIGHT used for font size.
+    margin_pct: uniform horizontal & vertical margin as % of width/height.
+    line_gap_font_pct: additional gap below first line relative to font size (not absolute height).
+    logo_width_pct: logo width relative to output WIDTH; height auto-preserved with -1.
+    """
+    font_size = max(12, int(output_height * font_pct))
+    margin_x = int(output_width * margin_pct)
+    margin_y = int(output_height * margin_pct)
+    second_line_y = margin_y + font_size + int(font_size * line_gap_font_pct)
+    logo_target_width = max(32, int(output_width * logo_width_pct))
+    return {
+        'text_margin_x': margin_x,
+        'text_margin_y': margin_y,
+        'font_size': font_size,
+        'second_line_y': second_line_y,
+        'logo_target_width': logo_target_width,
+        'logo_margin': margin_x,
+    }
     
 def getCropFilter(OutputResolutionX, OutputResolutionY, firstFramePath):
     # Calculate decimal ratio from output resolution
@@ -59,13 +86,31 @@ def getCropFilter(OutputResolutionX, OutputResolutionY, firstFramePath):
 
     return crop_width, crop_height, crop_x, crop_y
 
-def createTimelaspe(BasePath, FilePattern, FirstFile, OutputDir, OutputResX, OutputResY, SetNumber, SetName, Phase, TitleTime=5, logoPath='BorrowLapse.png', ExposureSettings=None):
-    stream = ffmpeg.input( f'{BasePath}/{FilePattern}', framerate=60, pattern_type='sequence', start_number=0)
+def createTimelaspe(BasePath, FilePattern, FirstFile, OutputDir, OutputResX, OutputResY,
+                    SetNumber, SetName, Phase, TitleTime=5, logoPath='BorrowLapse.png',
+                    ExposureSettings=None,
+                    font_pct=0.055, margin_pct=0.025, line_gap_font_pct=0.18, logo_width_pct=0.15):
+    stream = ffmpeg.input(f'{BasePath}/{FilePattern}', framerate=60, pattern_type='sequence', start_number=0)
 
     # Crop video to 3200x4000 starting at 1600x0
     #stream = ffmpeg.filter(stream, 'crop', 3200, 4000, 1600, 0)
     crop_width, crop_height, crop_x, crop_y = getCropFilter(OutputResX, OutputResY, f'{BasePath}/{FirstFile}')
     stream = ffmpeg.filter(stream, 'crop', crop_width, crop_height, crop_x, crop_y)
+
+    # SCALE to final output resolution BEFORE overlays so positioning is correct across differing source sizes
+    output_width = int(OutputResX)
+    output_height = int(OutputResY)
+    stream = ffmpeg.filter(stream, 'scale', output_width, output_height)
+    print(f"Scaled cropped frames to {output_width}x{output_height} before applying overlays")
+
+    # Calculate overlay dimensions relative to FINAL scaled size
+    overlay_dims = calculateOverlayDimensions(output_width, output_height,
+                                              font_pct=font_pct,
+                                              margin_pct=margin_pct,
+                                              line_gap_font_pct=line_gap_font_pct,
+                                              logo_width_pct=logo_width_pct)
+
+    print(f"Overlay dimensions: margin=({overlay_dims['text_margin_x']},{overlay_dims['text_margin_y']}) font={overlay_dims['font_size']} second_line_y={overlay_dims['second_line_y']} logo_w={overlay_dims['logo_target_width']}")
     
     # Apply exposure adjustments if provided
     if ExposureSettings:
@@ -85,15 +130,26 @@ def createTimelaspe(BasePath, FilePattern, FirstFile, OutputDir, OutputResX, Out
 
     # Overlay the set number and name on the top left of the video for the first TitleTime seconds
     SetAndPhase = f'#{SetNumber} - {phaseToText(Phase)}'
-    stream = ffmpeg.drawtext(stream, text=SetAndPhase, x=50, y=50,  fontsize=180, fontcolor='white', box=1, boxcolor='black@0.5', enable=f'between(t,0,{TitleTime})')
-    stream = ffmpeg.drawtext(stream, text=SetName,     x=50, y=240, fontsize=180, fontcolor='white', box=1, boxcolor='black@0.5', enable=f'between(t,0,{TitleTime})')
+    stream = ffmpeg.drawtext(stream, text=SetAndPhase,
+                             x=overlay_dims['text_margin_x'], y=overlay_dims['text_margin_y'],
+                             fontsize=overlay_dims['font_size'], fontcolor='white', box=1,
+                             boxcolor='black@0.5', enable=f'between(t,0,{TitleTime})')
+    stream = ffmpeg.drawtext(stream, text=SetName,
+                             x=overlay_dims['text_margin_x'], y=overlay_dims['second_line_y'],
+                             fontsize=overlay_dims['font_size'], fontcolor='white', box=1,
+                             boxcolor='black@0.5', enable=f'between(t,0,{TitleTime})')
 
-    # Overlay logo on top right of video
+    # Overlay logo on top right of video - scale logo relative to output width
     logo = ffmpeg.input(logoPath)
-    stream = ffmpeg.overlay(stream, logo, x=crop_width-700, y=0)
+    # Scale logo to target width, keep aspect: height -1 lets ffmpeg auto-calc
+    logo = ffmpeg.filter(logo, 'scale', overlay_dims['logo_target_width'], -1)
+    logo_x_pos = output_width - overlay_dims['logo_target_width'] - overlay_dims['logo_margin']
+    stream = ffmpeg.overlay(stream, logo, x=logo_x_pos, y=overlay_dims['text_margin_y'])
+    print(f"Logo positioned at x={logo_x_pos} y={overlay_dims['text_margin_y']}")
 
     # TODO: Remove Temp from the filename
-    stream = ffmpeg.output(stream, f'{OutputDir}/{SetNumber} - {SetName} - {Phase}-temp.mp4', s=f'{OutputResX}x{OutputResY}', c='libx264', crf=17, pix_fmt='yuv420p')
+    # No -s parameter needed; already scaled
+    stream = ffmpeg.output(stream, f'{OutputDir}/{SetNumber} - {SetName} - {Phase}-temp.mp4', c='libx264', crf=17, pix_fmt='yuv420p')
 
     ffmpeg.run(stream, overwrite_output=True)
 

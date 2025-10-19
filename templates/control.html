@@ -117,6 +117,8 @@
         </select>
         <!-- Button to start timelapse -->
         <button id="toggle_timelapse">Start</button>
+  &nbsp; &nbsp;
+  <button id="capture_toggle" class="btn btn-sm btn-outline-primary">Pause Capture</button>
         
         <!-- Camera Monitor Status Display -->
         <div id="monitor-status" class="card mt-3">
@@ -139,6 +141,7 @@
                 <p><strong>Capture Count:</strong> <span id="monitor-count">0</span></p>
                 <p><strong>Last Capture:</strong> <span id="monitor-last-capture">Never</span></p>
                 <p><strong>Last Update:</strong> <span id="monitor-last-update">Never</span></p>
+                <p><strong>Method:</strong> <span id="monitor-backend">Unknown</span></p>
               </div>
             </div>
             <div class="row">
@@ -535,9 +538,10 @@
           statusText.className = 'text-danger';
         }
         
-        document.getElementById('monitor-set').textContent = data.current_set || 'Unknown';
-        document.getElementById('monitor-phase').textContent = data.current_phase || 'Unknown';
-        document.getElementById('monitor-count').textContent = data.capture_count || '0';
+  document.getElementById('monitor-backend').textContent = data.backend || 'Unknown';
+  document.getElementById('monitor-set').textContent = data.current_set || 'Unknown';
+  document.getElementById('monitor-phase').textContent = data.current_phase || 'Unknown';
+  document.getElementById('monitor-count').textContent = data.capture_count || '0';
         
         // Format timestamps or show 'Never' if null
         const formatTime = (timestamp) => {
@@ -548,6 +552,10 @@
         
         document.getElementById('monitor-last-capture').textContent = formatTime(data.last_capture);
         document.getElementById('monitor-last-update').textContent = formatTime(data.last_update);
+        // Update capture toggle label based on capture_enabled
+        if (typeof data.capture_enabled !== 'undefined') {
+          updateCaptureToggleButton(data.capture_enabled);
+        }
         
         // Handle errors
         const errorList = document.getElementById('monitor-error-list');
@@ -622,9 +630,10 @@
           statusText.className = 'text-danger';
         }
         
-        document.getElementById('monitor-set').textContent = data.monitor_status.current_set || 'Unknown';
-        document.getElementById('monitor-phase').textContent = data.monitor_status.current_phase || 'Unknown';
-        document.getElementById('monitor-count').textContent = data.monitor_status.capture_count || '0';
+  document.getElementById('monitor-backend').textContent = data.monitor_status.backend || 'Unknown';
+  document.getElementById('monitor-set').textContent = data.monitor_status.current_set || 'Unknown';
+  document.getElementById('monitor-phase').textContent = data.monitor_status.current_phase || 'Unknown';
+  document.getElementById('monitor-count').textContent = data.monitor_status.capture_count || '0';
         
         // Format timestamps
         const formatTime = (timestamp) => {
@@ -635,6 +644,9 @@
         
         document.getElementById('monitor-last-capture').textContent = formatTime(data.monitor_status.last_capture);
         document.getElementById('monitor-last-update').textContent = formatTime(data.monitor_status.last_update);
+        if (typeof data.monitor_status.capture_enabled !== 'undefined') {
+          updateCaptureToggleButton(data.monitor_status.capture_enabled);
+        }
         
         // Handle errors
         const errorList = document.getElementById('monitor-error-list');
@@ -681,6 +693,35 @@
   }
 
   connectWebSocket();
+
+  // Capture enable/disable logic
+  function updateCaptureToggleButton(enabled){
+    const btn = document.getElementById('capture_toggle');
+    if (enabled){
+      btn.textContent = 'Pause Capture';
+      btn.classList.remove('btn-danger');
+      btn.classList.add('btn-outline-primary');
+    } else {
+      btn.textContent = 'Resume Capture';
+      btn.classList.remove('btn-outline-primary');
+      btn.classList.add('btn-danger');
+    }
+  }
+
+  document.getElementById('capture_toggle').addEventListener('click', () => {
+    fetch('/api/monitor/status').then(r=>r.json()).then(cur => {
+      const newState = !cur.capture_enabled;
+      fetch('/api/monitor/capture', {
+        method: 'POST',
+        headers: {'Content-Type':'application/json'},
+        body: JSON.stringify({enabled: newState})
+      }).then(r=>r.json()).then(resp => {
+        if (resp.capture_enabled !== undefined){
+          updateCaptureToggleButton(resp.capture_enabled);
+        }
+      }).catch(err => console.error('Capture toggle error', err));
+    });
+  });
 
   // Get cameras from the server
   fetch('/api/cameras').then(response => response.json()).then(data => {

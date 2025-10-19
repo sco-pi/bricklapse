@@ -53,7 +53,13 @@ import logging
 from datetime import datetime
 import traceback
 
-import gphoto2 as gp
+import gphoto2 as gp  # kept for legacy direct references; backend abstraction now used
+from timelapse_backends import (
+    BackendConfig,
+    BackendError,
+    create_backend,
+    BaseTimelapseCamera,
+)
 
 # Host to update with the status of the timelapse
 API_HOST = "http://127.0.0.1:8000"
@@ -63,7 +69,7 @@ SET_NUMBER = "42115"
 PHASE = "build"
 # Initial number of the captured images
 INITIAL_COUNT = 0
-# time between captures
+# time between captures (used for non event-driven backends)
 INTERVAL = 1.0
 # temporary directory
 WORK_DIR = f"/mnt/legotimelapse/captures/{SET_NUMBER}/{PHASE}"
@@ -212,91 +218,104 @@ def status_monitor(stop_event, status_change_event, current_set_phase):
             time.sleep(RETRY_DELAY)
 
 
-def capture_loop(camera, count, stop_event, status_change_event):
-    """
-    Main camera capture loop that handles image capture events.
-    Returns when stop_event is set or status_change_event is set.
-    """
-    timeout = 3000  # milliseconds
-    
-    # Create the directory if it doesn't exist
+CAPTURE_ENABLED = True  # global flag controlled by server (polled)
+
+def _poll_capture_enabled():
+    global CAPTURE_ENABLED
+    try:
+        resp = requests.get(f"{API_HOST}/api/monitor/status", timeout=3)
+        if resp.status_code == 200:
+            data = resp.json()
+            if "capture_enabled" in data:
+                CAPTURE_ENABLED = bool(data["capture_enabled"])
+    except Exception:
+        pass
+
+def capture_loop_backend(backend: BaseTimelapseCamera, count: int, stop_event, status_change_event):
+    """Unified capture loop supporting event-driven and interval-driven backends."""
+    # Create directory
     if not os.path.exists(WORK_DIR):
         os.makedirs(WORK_DIR)
         logger.info(f"Created directory {WORK_DIR}")
 
-    logger.info(f"Starting capture loop for {SET_NUMBER}/{PHASE} from count {count}")
-    
-    # Update monitor status to show we're actively capturing
+    logger.info(f"Starting capture loop ({backend.name}) for {SET_NUMBER}/{PHASE} from count {count}")
+
+    # Initial status
     update_monitor_status(API_HOST, {
         "running": True,
         "camera_connected": True,
         "current_set": SET_NUMBER,
         "current_phase": PHASE,
         "capture_count": count,
+        "backend": backend.name,
         "errors": []
     })
-    
-    # Track errors for status reporting
+
     recent_errors = []
     last_status_update = time.time()
-    status_update_interval = 10  # seconds
-    
+    status_update_interval = 10
+    interval = INTERVAL if not backend.event_driven else None
+    next_capture_time = time.monotonic() + (interval if interval else 0)
+
+    timeout_ms = 3000
+
+    poll_interval = 5  # seconds for capture_enabled polling
+    last_poll = 0
+
     while not (stop_event.is_set() or status_change_event.is_set()):
         try:
-            event_type, event_data = camera.wait_for_event(timeout)
-            
-            if event_type == gp.GP_EVENT_FILE_ADDED:
-                try:
-                    cam_file = camera.file_get(
-                        event_data.folder, event_data.name, gp.GP_FILE_TYPE_NORMAL)
-                    target_path = os.path.join(WORK_DIR, f"frame{count:05d}.jpg")
-                    logger.info(f"Image is being saved to {target_path}")
-                    cam_file.save(target_path)
-                    
-                    current_time = time.time()
+            now = time.time()
+            if now - last_poll > poll_interval:
+                _poll_capture_enabled()
+                last_poll = now
 
-                    # Send update to the server
-                    update = {
-                        "timelapse": {
-                            "set_number": SET_NUMBER,
-                            "phase": PHASE,
-                            "filename": f"frame{count:05d}.jpg",
-                            "timestamp": current_time,
-                            "count": count
-                        }
-                    }
-                    try:
-                        response = requests.post(f"{API_HOST}/api/update", json=update, timeout=5)
-                        if response.status_code != 200:
-                            logger.warning(f"Failed to update server: HTTP {response.status_code}")
-                            recent_errors.append(f"Failed server update: HTTP {response.status_code}")
-                    except requests.RequestException as e:
-                        logger.warning(f"Error updating server: {e}")
-                        recent_errors.append(f"Server communication error: {str(e)}")
-
-                    # Update monitor status after capture
+            if not CAPTURE_ENABLED:
+                # When paused, still provide heartbeat updates periodically (without overriding capture_enabled)
+                if time.time() - last_status_update > status_update_interval:
                     update_monitor_status(API_HOST, {
-                        "running": True, 
+                        "running": True,
                         "camera_connected": True,
-                        "last_capture": current_time,
                         "current_set": SET_NUMBER,
                         "current_phase": PHASE,
                         "capture_count": count,
-                        "errors": recent_errors[-5:] if recent_errors else []  # Keep only the 5 most recent errors
+                        "backend": backend.name,
+                        "errors": []
                     })
-                    recent_errors = []  # Clear errors after successful update
+                    last_status_update = time.time()
+                time.sleep(0.2)
+                continue
+            if backend.event_driven:
+                event = backend.wait_for_event(timeout_ms)
+                # event is a tuple (event_type, event_data)
+                if isinstance(event, tuple) and len(event) == 2:
+                    event_type, _ = event
+                    if event_type == gp.GP_EVENT_FILE_ADDED:  # type: ignore
+                        target_path = os.path.join(WORK_DIR, f"frame{count:05d}.jpg")
+                        if backend.handle_event(event, target_path):
+                            current_time = time.time()
+                            _post_capture_status(count, current_time, recent_errors, backend)
+                            count += 1
+                            recent_errors = []
+                # else ignore other events / timeouts
+            else:
+                now_mono = time.monotonic()
+                if now_mono >= next_capture_time:
+                    target_path = os.path.join(WORK_DIR, f"frame{count:05d}.jpg")
+                    ok = backend.capture_next(target_path)
+                    current_time = time.time()
+                    if ok:
+                        _post_capture_status(count, current_time, recent_errors, backend)
+                        count += 1
+                        recent_errors = []
+                    else:
+                        recent_errors.append("capture failed")
+                    # schedule next capture using fixed step to avoid drift
+                    next_capture_time += interval
+                else:
+                    # sleep a short amount to avoid busy wait
+                    time.sleep(0.05)
 
-                    count += 1
-                except gp.GPhoto2Error as e:
-                    error_msg = f"Error processing camera file: {e}"
-                    logger.error(error_msg)
-                    recent_errors.append(error_msg)
-            
-            elif event_type == gp.GP_EVENT_TIMEOUT:
-                # Just a timeout, continue the loop
-                pass
-                
-            # Periodically update status even if no new captures
+            # Periodic status update
             if time.time() - last_status_update > status_update_interval:
                 update_monitor_status(API_HOST, {
                     "running": True,
@@ -304,34 +323,80 @@ def capture_loop(camera, count, stop_event, status_change_event):
                     "current_set": SET_NUMBER,
                     "current_phase": PHASE,
                     "capture_count": count,
+                    "backend": backend.name,
                     "errors": recent_errors[-5:] if recent_errors else []
                 })
                 last_status_update = time.time()
-                
-        except gp.GPhoto2Error as e:
-            error_msg = f"Camera error in capture loop: {e}"
-            logger.error(error_msg)
+
+        except BackendError as be:
+            err = f"Backend error: {be}"
+            logger.error(err)
             update_monitor_status(API_HOST, {
                 "running": True,
                 "camera_connected": False,
-                "errors": [error_msg]
+                "backend": backend.name,
+                "errors": [err]
+            })
+            return False
+        except gp.GPhoto2Error as e:
+            err = f"Camera error (gphoto2): {e}"
+            logger.error(err)
+            update_monitor_status(API_HOST, {
+                "running": True,
+                "camera_connected": False,
+                "backend": backend.name,
+                "errors": [err]
             })
             return False
         except Exception as e:
-            error_msg = f"Unexpected error in capture loop: {e}"
-            logger.error(error_msg)
+            err = f"Unexpected capture loop error: {e}"
+            logger.error(err)
             logger.error(traceback.format_exc())
             update_monitor_status(API_HOST, {
                 "running": True,
                 "camera_connected": False,
-                "errors": [error_msg]
+                "backend": backend.name,
+                "errors": [err]
             })
             return False
-    
     return True
 
 
-def main():
+def _post_capture_status(count: int, current_time: float, recent_errors, backend: BaseTimelapseCamera):
+    """Helper to send update after a successful frame capture."""
+    filename = f"frame{count:05d}.jpg"
+    update_payload = {
+        "timelapse": {
+            "set_number": SET_NUMBER,
+            "phase": PHASE,
+            "filename": filename,
+            "timestamp": current_time,
+            "count": count
+        }
+    }
+    try:
+        response = requests.post(f"{API_HOST}/api/update", json=update_payload, timeout=5)
+        if response.status_code != 200:
+            logger.warning(f"Failed to update server: HTTP {response.status_code}")
+            recent_errors.append(f"Failed server update: HTTP {response.status_code}")
+    except requests.RequestException as e:
+        logger.warning(f"Error updating server: {e}")
+        recent_errors.append(f"Server communication error: {str(e)}")
+
+    # NOTE: Do NOT include capture_enabled here so user-driven toggle on server is preserved.
+    update_monitor_status(API_HOST, {
+        "running": True,
+        "camera_connected": True,
+        "last_capture": current_time,
+        "current_set": SET_NUMBER,
+        "current_phase": PHASE,
+        "capture_count": count,
+        "backend": backend.name,
+        "errors": recent_errors[-5:] if recent_errors else []
+    })
+
+
+def main(backend_name: str, backend_cfg: BackendConfig):
     locale.setlocale(locale.LC_ALL, '')
     
     global WORK_DIR
@@ -346,6 +411,7 @@ def main():
     current_set_phase = [SET_NUMBER, PHASE]
     
     # Update the monitor status to show we're starting up
+    # Initial status (do not set capture_enabled here; server owns that flag)
     update_monitor_status(API_HOST, {
         "running": True,
         "camera_connected": False,
@@ -366,72 +432,52 @@ def main():
         logger.info("Status monitor thread started")
         
         while not stop_event.is_set():
-            # Initialize camera
-            camera = initialize_camera()
-            if not camera:
-                logger.error("Failed to initialize camera, waiting before retry...")
-                # Update status to show camera connection failed
+            # Initialize backend
+            try:
+                backend = create_backend(backend_name, backend_cfg)
+                backend.ensure_initialized()
+            except BackendError as be:
+                logger.error(f"Backend initialization failed: {be}")
                 update_monitor_status(API_HOST, {
                     "running": True,
                     "camera_connected": False,
-                    "errors": ["Failed to initialize camera, retrying..."]
+                    "backend": backend_name,
+                    "errors": [f"Backend init failed: {be}"]
                 })
                 time.sleep(RETRY_DELAY * 2)
                 continue
-                
-            # Get the count for the current directory
+
             count = get_last_file_number(WORK_DIR)
-            
-            # Clear any pending status change events
             status_change_event.clear()
-            
-            # Update status to show successful camera connection
-            update_monitor_status(API_HOST, {
-                "running": True,
-                "camera_connected": True,
-                "current_set": SET_NUMBER,
-                "current_phase": PHASE,
-                "capture_count": count
-            })
-            
-            # Enter the capture loop
-            success = capture_loop(camera, count, stop_event, status_change_event)
-            
+
+            success = capture_loop_backend(backend, count, stop_event, status_change_event)
+
             if status_change_event.is_set():
                 logger.info(f"Set/phase changed to {SET_NUMBER}/{PHASE}, restarting capture")
-                
-                # Update the work directory
                 WORK_DIR = f"/mnt/legotimelapse/captures/{SET_NUMBER}/{PHASE}"
-                
-                # Update status to show phase/set change
                 update_monitor_status(API_HOST, {
                     "running": True,
                     "camera_connected": True,
+                    "backend": backend.name,
                     "current_set": SET_NUMBER,
                     "current_phase": PHASE
                 })
-                
-                # Close the camera to reinitialize with clean state
                 try:
-                    camera.exit()
-                    logger.info("Camera exited cleanly")
+                    backend.shutdown()
                 except Exception as e:
-                    logger.warning(f"Error closing camera: {e}")
-            
+                    logger.warning(f"Error shutting down backend: {e}")
             elif not success:
-                logger.warning("Capture loop failed, will reinitialize")
-                # Update status to show failure
+                logger.warning("Capture loop failed, will reinitialize backend")
                 update_monitor_status(API_HOST, {
                     "running": True,
                     "camera_connected": False,
+                    "backend": backend.name,
                     "errors": ["Capture loop failed, reinitializing..."]
                 })
                 time.sleep(RETRY_DELAY)
-                
-                # Try to clean up the camera
                 try:
-                    camera.exit()
-                except:
+                    backend.shutdown()
+                except Exception:
                     pass
             
     except KeyboardInterrupt:
@@ -465,6 +511,14 @@ if __name__ == "__main__":
     parser.add_argument("--set-number", type=str, default="0", help="Set number to capture images for")
     parser.add_argument("--phase", type=str, default="0", help="Phase of the timelapse, e.g. sort, build, or dissasemble")
     parser.add_argument("--initial-count", type=int, default=INITIAL_COUNT, help="Initial number of the captured images")
+    parser.add_argument("--backend", type=str, default="gphoto2", help="Camera backend: gphoto2|picamera2|libcamera|opencv|auto")
+    parser.add_argument("--interval", type=float, default=INTERVAL, help="Capture interval seconds (non event-driven backends)")
+    parser.add_argument("--resolution", type=str, default=None, help="Resolution WxH (e.g. 1920x1080) for supported backends")
+    parser.add_argument("--device-index", type=int, default=0, help="Video device index for OpenCV backend")
+    parser.add_argument("--iso", type=int, default=None, help="ISO / gain (backend specific)")
+    parser.add_argument("--shutter-us", type=int, default=None, help="Shutter speed microseconds (backend specific)")
+    parser.add_argument("--awb", type=str, default=None, help="Auto white balance mode (backend specific)")
+    parser.add_argument("--exposure-mode", type=str, default=None, help="Exposure mode (backend specific)")
     parser.add_argument("--status-check-interval", type=int, default=STATUS_CHECK_INTERVAL, 
                         help="Seconds between checking for status changes")
     parser.add_argument("--retry-delay", type=int, default=RETRY_DELAY,
@@ -503,11 +557,34 @@ if __name__ == "__main__":
     else:
         INITIAL_COUNT = args.initial_count
 
-    logger.info(f"Starting capture for set {SET_NUMBER} in phase {PHASE} starting at {INITIAL_COUNT}")
-    logger.info(f"Status check interval: {STATUS_CHECK_INTERVAL}s, Retry delay: {RETRY_DELAY}s")
+    # Parse resolution
+    res_tuple = None
+    if args.resolution:
+        try:
+            w, h = args.resolution.lower().split("x")
+            res_tuple = (int(w), int(h))
+        except Exception:
+            logger.error("Invalid --resolution format, expected WxH")
+            sys.exit(1)
+
+    # Update interval global (used by capture loop)
+    INTERVAL = args.interval
+
+    backend_cfg = BackendConfig(
+        interval=args.interval,
+        resolution=res_tuple,
+        device_index=args.device_index,
+        exposure_mode=args.exposure_mode,
+        awb=args.awb,
+        iso=args.iso,
+        shutter_us=args.shutter_us,
+    )
+
+    logger.info(f"Starting capture for set {SET_NUMBER} in phase {PHASE} starting at {INITIAL_COUNT} using backend {args.backend}")
+    logger.info(f"Status check interval: {STATUS_CHECK_INTERVAL}s, Retry delay: {RETRY_DELAY}s, Interval: {INTERVAL}s")
 
     try:
-        exit_code = main()
+        exit_code = main(args.backend, backend_cfg)
         logger.info(f"Exiting with code {exit_code}")
         sys.exit(exit_code)
     except Exception as e:
