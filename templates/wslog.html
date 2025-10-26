@@ -6,9 +6,119 @@
   <title>Web Socket Log</title>
   <!-- Bootstrap CSS -->
   <link href="https://stackpath.bootstrapcdn.com/bootstrap/4.5.2/css/bootstrap.min.css" rel="stylesheet">
+  <style>
+    /* Sidebar Navigation */
+    .sidebar {
+      position: fixed;
+      left: -250px;
+      top: 0;
+      width: 250px;
+      height: 100vh;
+      background: #343a40;
+      transition: left 0.3s ease;
+      z-index: 1050;
+      overflow-y: auto;
+    }
+    
+    .sidebar.open {
+      left: 0;
+    }
+    
+    .sidebar .nav-link {
+      color: #fff;
+      padding: 12px 20px;
+      display: block;
+      text-decoration: none;
+      transition: background 0.2s;
+    }
+    
+    .sidebar .nav-link:hover {
+      background: #495057;
+      color: #fff;
+    }
+    
+    .sidebar .nav-link.active {
+      background: #007bff;
+    }
+    
+    .sidebar-header {
+      padding: 20px;
+      background: #212529;
+      color: #fff;
+      font-weight: bold;
+      font-size: 1.2rem;
+    }
+    
+    .menu-toggle {
+      position: fixed;
+      left: 10px;
+      top: 10px;
+      z-index: 1051;
+      background: #343a40;
+      color: #fff;
+      border: none;
+      padding: 10px 15px;
+      border-radius: 5px;
+      cursor: pointer;
+      transition: background 0.2s;
+    }
+    
+    .menu-toggle:hover {
+      background: #495057;
+    }
+    
+    .sidebar-overlay {
+      position: fixed;
+      top: 0;
+      left: 0;
+      width: 100%;
+      height: 100%;
+      background: rgba(0, 0, 0, 0.5);
+      z-index: 1049;
+      display: none;
+    }
+    
+    .sidebar-overlay.show {
+      display: block;
+    }
+    
+    .page-content {
+      transition: margin-left 0.3s ease;
+    }
+    /* Force left alignment for this page */
+    .page-content, .page-content h1, .page-content h2, .page-content h3,
+    .page-content p, .page-content label, .page-content ul, .page-content li {
+      text-align: left !important;
+    }
+    .page-content img, .page-content canvas { display:block; margin-left:0; }
+  </style>
 </head>
 <body>
 
+<!-- Menu Toggle Button -->
+<button class="menu-toggle" id="menuToggle">☰ Menu</button>
+
+<!-- Sidebar Navigation -->
+<div class="sidebar" id="sidebar">
+  <div class="sidebar-header">
+    Lego Timelapse
+  </div>
+  <nav>
+    <a href="/control" class="nav-link">Control</a>
+    <a href="/viewer" class="nav-link">Viewer</a>
+    <a href="/sets" class="nav-link">Sets</a>
+    <a href="/active-set" class="nav-link">Set Active Set</a>
+    <a href="/wslog" class="nav-link active">Web Socket Log</a>
+    <a href="/images" class="nav-link">Images</a>
+    <a href="/camera-test" class="nav-link">Camera Test</a>
+    <a href="/video-stream" class="nav-link">Video Stream</a>
+  </nav>
+</div>
+
+<!-- Sidebar Overlay -->
+<div class="sidebar-overlay" id="sidebarOverlay"></div>
+
+<div class="page-content">
 <div class="container">
   <div class="row">
     <div class="col">
@@ -47,7 +157,25 @@
                 input.value = ''
                 event.preventDefault()
             }
+
+        // Sidebar toggle functionality
+        (function() {
+          const menuToggle = document.getElementById('menuToggle');
+          const sidebar = document.getElementById('sidebar');
+          const overlay = document.getElementById('sidebarOverlay');
+          
+          menuToggle.addEventListener('click', () => {
+            sidebar.classList.toggle('open');
+            overlay.classList.toggle('show');
+          });
+          
+          overlay.addEventListener('click', () => {
+            sidebar.classList.remove('open');
+            overlay.classList.remove('show');
+          });
+        })();
         </script>
 
+</div>
 </body>
 </html>

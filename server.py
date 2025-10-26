@@ -83,7 +83,7 @@ async def get_favicon():
 # Default UI Linking to Control, Viewer, and WS Log UIs
 @app.get("/", include_in_schema=False)
 async def get():
-    return FileResponse("templates/index.html")
+    return FileResponse("templates/control.html")
 
 @app.get("/control", include_in_schema=False)
 async def get():
