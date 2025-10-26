@@ -31,6 +31,7 @@ except Exception:  # Pillow or picamera2 may not be installed in venv though sys
 app = FastAPI()
 
 app.mount("/static", StaticFiles(directory="static"), name="static")
+app.mount("/media", StaticFiles(directory="/mnt/legotimelapse/media"), name="media")
 
 instructions_dir = "/mnt/legotimelapse/instructions"
 last_page = 1
@@ -211,6 +212,247 @@ async def update(set_id: int, set: dict):
     with open("sets.yml", "w") as f:
         yaml.dump(sets, f)
     return set
+
+# List media for a set (timelapses, photos, hero images)
+@app.get("/api/sets/{set_id}/media")
+async def get_set_media(set_id: str):
+    """Get all media associated with a set.
+    
+    Returns:
+        {
+            "set_id": str,
+            "timelapses": [{"phase": str, "filename": str, "url": str, "size_bytes": int, "modified": float}, ...],
+            "photos": [{"filename": str, "url": str, "size_bytes": int, "modified": float}, ...],
+            "videos": [{"filename": str, "url": str, "size_bytes": int, "modified": float}, ...],
+            "hero_image": {"filename": str, "url": str, "size_bytes": int} or None
+        }
+    """
+    base_dir = "/mnt/legotimelapse"
+    timelapse_dir = os.path.join(base_dir, "media", set_id, "timelapse")
+    photos_dir = os.path.join(base_dir, "media", set_id, "photos")
+    videos_dir = os.path.join(base_dir, "media", set_id, "videos")
+    media_dir = os.path.join(base_dir, "media", set_id)
+    
+    result = {
+        "set_id": set_id,
+        "timelapses": [],
+        "photos": [],
+        "videos": [],
+        "hero_image": None
+    }
+    
+    # Scan for hero image
+    hero_extensions = ['.jpg', '.jpeg', '.png', '.gif', '.webp']
+    for ext in hero_extensions:
+        hero_path = os.path.join(media_dir, f"hero{ext}")
+        if os.path.exists(hero_path):
+            try:
+                stat_info = os.stat(hero_path)
+                result["hero_image"] = {
+                    "filename": f"hero{ext}",
+                    "url": f"/media/{set_id}/hero{ext}",
+                    "size_bytes": stat_info.st_size
+                }
+                break
+            except Exception as e:
+                print(f"[WARN] Could not stat hero image {hero_path}: {e}")
+    
+    # Scan timelapse directory for mp4 files
+    if os.path.exists(timelapse_dir) and os.path.isdir(timelapse_dir):
+        for filename in sorted(os.listdir(timelapse_dir)):
+            if filename.lower().endswith('.mp4'):
+                file_path = os.path.join(timelapse_dir, filename)
+                try:
+                    stat_info = os.stat(file_path)
+                    # Extract phase from filename pattern: "<set_id> - <name> - <phase>.mp4"
+                    phase = "unknown"
+                    parts = filename.rsplit(' - ', 1)
+                    if len(parts) == 2:
+                        phase_with_ext = parts[1]
+                        phase = phase_with_ext.replace('.mp4', '').replace('-temp', '')
+                    
+                    result["timelapses"].append({
+                        "phase": phase,
+                        "filename": filename,
+                        "url": f"/media/{set_id}/timelapse/{filename}",
+                        "size_bytes": stat_info.st_size,
+                        "modified": stat_info.st_mtime
+                    })
+                except Exception as e:
+                    print(f"[WARN] Could not stat {file_path}: {e}")
+    # Scan photos directory
+    photo_extensions = {'.jpg', '.jpeg', '.png', '.gif', '.webp'}
+    if os.path.exists(photos_dir) and os.path.isdir(photos_dir):
+        for filename in sorted(os.listdir(photos_dir)):
+            if os.path.splitext(filename)[1].lower() in photo_extensions:
+                file_path = os.path.join(photos_dir, filename)
+                try:
+                    stat_info = os.stat(file_path)
+                    result["photos"].append({
+                        "filename": filename,
+                        "url": f"/media/{set_id}/photos/{filename}",
+                        "size_bytes": stat_info.st_size,
+                        "modified": stat_info.st_mtime
+                    })
+                except Exception as e:
+                    print(f"[WARN] Could not stat {file_path}: {e}")
+    
+    # Scan videos directory
+    video_extensions = {'.mp4', '.mov', '.avi', '.mkv', '.webm'}
+    if os.path.exists(videos_dir) and os.path.isdir(videos_dir):
+        for filename in sorted(os.listdir(videos_dir)):
+            if os.path.splitext(filename)[1].lower() in video_extensions:
+                file_path = os.path.join(videos_dir, filename)
+                try:
+                    stat_info = os.stat(file_path)
+                    result["videos"].append({
+                        "filename": filename,
+                        "url": f"/media/{set_id}/videos/{filename}",
+                        "size_bytes": stat_info.st_size,
+                        "modified": stat_info.st_mtime
+                    })
+                except Exception as e:
+                    print(f"[WARN] Could not stat {file_path}: {e}")
+    
+    
+    return result
+
+# Upload hero image for a set
+@app.post("/api/sets/{set_id}/media/hero")
+async def upload_hero_image(set_id: str, file: UploadFile = File(...)):
+    """Upload a hero image for a set.
+    
+    Accepts: image files (jpg, jpeg, png, gif, webp)
+    Saves to: /mnt/legotimelapse/media/{set_id}/hero.{ext}
+    Only one hero image per set; replaces existing.
+    """
+    base_dir = "/mnt/legotimelapse"
+    media_dir = os.path.join(base_dir, "media", set_id)
+    
+    # Validate file type
+    allowed_extensions = {'.jpg', '.jpeg', '.png', '.gif', '.webp'}
+    file_ext = os.path.splitext(file.filename)[1].lower()
+    if file_ext not in allowed_extensions:
+        return JSONResponse(
+            status_code=400,
+            content={"error": f"Invalid file type. Allowed: {', '.join(allowed_extensions)}"}
+        )
+    
+    # Create directory if needed
+    os.makedirs(media_dir, exist_ok=True)
+    
+    # Remove any existing hero image
+    for ext in allowed_extensions:
+        old_hero = os.path.join(media_dir, f"hero{ext}")
+        if os.path.exists(old_hero):
+            os.remove(old_hero)
+    
+    # Save new hero image
+    hero_path = os.path.join(media_dir, f"hero{file_ext}")
+    with open(hero_path, "wb") as buffer:
+        shutil.copyfileobj(file.file, buffer)
+    
+    return {
+        "filename": f"hero{file_ext}",
+        "url": f"/media/{set_id}/hero{file_ext}",
+        "size_bytes": os.path.getsize(hero_path)
+    }
+
+# Upload photos for a set
+@app.post("/api/sets/{set_id}/media/photos")
+async def upload_photos(set_id: str, files: List[UploadFile] = File(...)):
+    """Upload one or more photos for a set.
+    
+    Accepts: image files (jpg, jpeg, png, gif, webp)
+    Saves to: /mnt/legotimelapse/media/{set_id}/photos/
+    """
+    base_dir = "/mnt/legotimelapse"
+    photos_dir = os.path.join(base_dir, "media", set_id, "photos")
+    
+    allowed_extensions = {'.jpg', '.jpeg', '.png', '.gif', '.webp'}
+    os.makedirs(photos_dir, exist_ok=True)
+    
+    uploaded = []
+    errors = []
+    
+    for file in files:
+        file_ext = os.path.splitext(file.filename)[1].lower()
+        if file_ext not in allowed_extensions:
+            errors.append(f"{file.filename}: Invalid file type")
+            continue
+        
+        # Save with original filename (or make unique if exists)
+        file_path = os.path.join(photos_dir, file.filename)
+        if os.path.exists(file_path):
+            # Add timestamp to make unique
+            import time
+            name, ext = os.path.splitext(file.filename)
+            unique_name = f"{name}_{int(time.time())}{ext}"
+            file_path = os.path.join(photos_dir, unique_name)
+            final_filename = unique_name
+        else:
+            final_filename = file.filename
+        
+        try:
+            with open(file_path, "wb") as buffer:
+                shutil.copyfileobj(file.file, buffer)
+            uploaded.append({
+                "filename": final_filename,
+                "url": f"/media/{set_id}/photos/{final_filename}",
+                "size_bytes": os.path.getsize(file_path)
+            })
+        except Exception as e:
+            errors.append(f"{file.filename}: {str(e)}")
+    
+    return {"uploaded": uploaded, "errors": errors}
+
+# Upload videos for a set
+@app.post("/api/sets/{set_id}/media/videos")
+async def upload_videos(set_id: str, files: List[UploadFile] = File(...)):
+    """Upload one or more videos for a set (not timelapses).
+    
+    Accepts: video files (mp4, mov, avi, mkv, webm)
+    Saves to: /mnt/legotimelapse/media/{set_id}/videos/
+    """
+    base_dir = "/mnt/legotimelapse"
+    videos_dir = os.path.join(base_dir, "media", set_id, "videos")
+    
+    allowed_extensions = {'.mp4', '.mov', '.avi', '.mkv', '.webm'}
+    os.makedirs(videos_dir, exist_ok=True)
+    
+    uploaded = []
+    errors = []
+    
+    for file in files:
+        file_ext = os.path.splitext(file.filename)[1].lower()
+        if file_ext not in allowed_extensions:
+            errors.append(f"{file.filename}: Invalid file type")
+            continue
+        
+        # Save with original filename (or make unique if exists)
+        file_path = os.path.join(videos_dir, file.filename)
+        if os.path.exists(file_path):
+            # Add timestamp to make unique
+            import time
+            name, ext = os.path.splitext(file.filename)
+            unique_name = f"{name}_{int(time.time())}{ext}"
+            file_path = os.path.join(videos_dir, unique_name)
+            final_filename = unique_name
+        else:
+            final_filename = file.filename
+        
+        try:
+            with open(file_path, "wb") as buffer:
+                shutil.copyfileobj(file.file, buffer)
+            uploaded.append({
+                "filename": final_filename,
+                "url": f"/media/{set_id}/videos/{final_filename}",
+                "size_bytes": os.path.getsize(file_path)
+            })
+        except Exception as e:
+            errors.append(f"{file.filename}: {str(e)}")
+    
+    return {"uploaded": uploaded, "errors": errors}
 
 # Get current page and instruction number as status
 @app.get("/api/status")

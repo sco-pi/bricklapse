@@ -159,6 +159,18 @@
                 title.className = 'card-title';
                 title.textContent = `${set['name']} (${set['id']})`;
                 card_body.appendChild(title);
+                
+                // Create three-column layout (4 + 5 + 3 = 12)
+                var row_div = document.createElement('div');
+                row_div.className = 'row';
+                
+                // Left column: Instructions
+                var instructions_col = document.createElement('div');
+                instructions_col.className = 'col-md-4';
+                var instructions_heading = document.createElement('h6');
+                instructions_heading.textContent = 'Instructions';
+                instructions_heading.className = 'text-muted mb-2';
+                instructions_col.appendChild(instructions_heading);
                 var instructions_div = document.createElement('div');
                 instructions_div.className = 'mb-2';
                 set['instructions'].forEach(instruction => {
@@ -166,7 +178,142 @@
                     instruction_div.innerHTML = `<a href="/instructions/${set['id']}/${instruction}">${instruction}</a>&nbsp;&nbsp;`;
                     instructions_div.appendChild(instruction_div);
                 });
-                card_body.appendChild(instructions_div);
+                instructions_col.appendChild(instructions_div);
+                row_div.appendChild(instructions_col);
+                
+                // Middle column: Timelapses / Photos / Videos
+                var media_col = document.createElement('div');
+                media_col.className = 'col-md-5';
+                
+                // Timelapses section
+                var timelapse_heading = document.createElement('h6');
+                timelapse_heading.textContent = 'Timelapses';
+                timelapse_heading.className = 'text-muted mb-1';
+                media_col.appendChild(timelapse_heading);
+                var media_list = document.createElement('div');
+                media_list.id = `media-list-${set['id']}`;
+                media_list.innerHTML = '<small class="text-muted">Loading...</small>';
+                media_col.appendChild(media_list);
+                
+                // Photos section
+                var photos_section = document.createElement('div');
+                photos_section.className = 'mt-2';
+                var photos_heading = document.createElement('h6');
+                photos_heading.textContent = 'Photos';
+                photos_heading.className = 'text-muted mb-1';
+                photos_section.appendChild(photos_heading);
+                var photos_container = document.createElement('div');
+                photos_container.id = `photos-${set['id']}`;
+                photos_container.innerHTML = '<small class="text-muted">Loading...</small>';
+                photos_section.appendChild(photos_container);
+                media_col.appendChild(photos_section);
+                
+                // Videos section
+                var videos_section = document.createElement('div');
+                videos_section.className = 'mt-2';
+                var videos_heading = document.createElement('h6');
+                videos_heading.textContent = 'Videos';
+                videos_heading.className = 'text-muted mb-1';
+                videos_section.appendChild(videos_heading);
+                var videos_container = document.createElement('div');
+                videos_container.id = `videos-${set['id']}`;
+                videos_container.innerHTML = '<small class="text-muted">Loading...</small>';
+                videos_section.appendChild(videos_container);
+                media_col.appendChild(videos_section);
+                
+                // Right column: Hero image (standout)
+                var hero_col = document.createElement('div');
+                hero_col.className = 'col-md-3 d-flex flex-column';
+                var hero_heading = document.createElement('h6');
+                hero_heading.textContent = 'Hero Image';
+                hero_heading.className = 'text-muted mb-2';
+                hero_col.appendChild(hero_heading);
+                var hero_container = document.createElement('div');
+                hero_container.id = `hero-${set['id']}`;
+                hero_container.className = 'border rounded p-1 bg-light d-flex align-items-center justify-content-center';
+                hero_container.style.minHeight = '110px';
+                hero_container.innerHTML = '<small class="text-muted">Loading...</small>';
+                hero_col.appendChild(hero_container);
+                
+                row_div.appendChild(media_col);
+                row_div.appendChild(hero_col);
+                
+                card_body.appendChild(row_div);
+                
+                // Fetch media for this set
+                fetch(`/api/sets/${set['id']}/media`)
+                    .then(response => response.json())
+                    .then(mediaData => {
+            // Display hero image
+            var heroContainer = document.getElementById(`hero-${set['id']}`);
+            heroContainer.innerHTML = '';
+            if (mediaData.hero_image) {
+              heroContainer.innerHTML = `<img src="${mediaData.hero_image.url}" alt="Hero" style="max-width: 100%; max-height: 100px; border-radius: 4px;">`;
+            } else {
+              heroContainer.innerHTML = '<small class="text-muted">No hero image</small>';
+            }
+                        
+            // Display timelapses
+                        var mediaListDiv = document.getElementById(`media-list-${set['id']}`);
+                        mediaListDiv.innerHTML = '';
+                        if (mediaData.timelapses && mediaData.timelapses.length > 0) {
+                            mediaData.timelapses.forEach(video => {
+                                var videoLink = document.createElement('div');
+                                videoLink.className = 'mb-1';
+                                var sizeKB = Math.round(video.size_bytes / 1024);
+                                var sizeDisplay = sizeKB > 1024 ? 
+                                    `${(sizeKB / 1024).toFixed(1)} MB` : 
+                                    `${sizeKB} KB`;
+                                videoLink.innerHTML = `
+                                    <a href="${video.url}" target="_blank" class="btn btn-sm btn-outline-primary mr-2">
+                                        📹 ${video.phase}
+                                    </a>
+                                    <small class="text-muted">${sizeDisplay}</small>
+                                `;
+                                mediaListDiv.appendChild(videoLink);
+                            });
+            } else {
+              mediaListDiv.innerHTML = '<small class="text-muted">None</small>';
+            }
+                        
+            // Display photos (count only)
+            var photosContainer = document.getElementById(`photos-${set['id']}`);
+            var photoCount = (mediaData.photos && mediaData.photos.length) ? mediaData.photos.length : 0;
+            photosContainer.innerHTML = photoCount > 0 ? `<small class="text-muted">${photoCount} photo${photoCount!==1?'s':''}</small>` : '<small class="text-muted">None</small>';
+            
+            // Display videos (count only)
+            var videosContainer = document.getElementById(`videos-${set['id']}`);
+            var videoCount = (mediaData.videos && mediaData.videos.length) ? mediaData.videos.length : 0;
+            videosContainer.innerHTML = videoCount > 0 ? `<small class="text-muted">${videoCount} video${videoCount!==1?'s':''}</small>` : '<small class="text-muted">None</small>';
+                    })
+                    .catch(error => {
+                        console.error('Error fetching media:', error);
+                        var mediaListDiv = document.getElementById(`media-list-${set['id']}`);
+                        mediaListDiv.innerHTML = '<small class="text-muted">Error loading media</small>';
+                
+                    });
+                
+                // Add action buttons row (bottom toolbar)
+                var buttons_div = document.createElement('div');
+                buttons_div.className = 'mt-3 d-flex flex-wrap align-items-center gap-2';
+                card_body.appendChild(buttons_div);
+                
+                // Upload buttons (moved from sections)
+                var hero_upload_btn = document.createElement('button');
+                hero_upload_btn.className = 'btn btn-sm btn-secondary mr-2';
+                hero_upload_btn.textContent = '📤 Hero';
+                buttons_div.appendChild(hero_upload_btn);
+                
+                var photos_upload_btn = document.createElement('button');
+                photos_upload_btn.className = 'btn btn-sm btn-secondary mr-2';
+                photos_upload_btn.textContent = '📤 Photos';
+                buttons_div.appendChild(photos_upload_btn);
+                
+                var videos_upload_btn = document.createElement('button');
+                videos_upload_btn.className = 'btn btn-sm btn-secondary mr-3';
+                videos_upload_btn.textContent = '📤 Videos';
+                buttons_div.appendChild(videos_upload_btn);
+                
                 // Add a button to add an instruction
                 var add_instruction_button = document.createElement('button');
                 add_instruction_button.className = 'btn btn-sm btn-primary mr-2';
@@ -208,7 +355,125 @@
                     };
                     file_input.click();
                 };
-                card_body.appendChild(add_instruction_button);
+        buttons_div.appendChild(add_instruction_button);
+                
+        // Hero image upload handler
+        hero_upload_btn.onclick = () => {
+          var fileInput = document.createElement('input');
+          fileInput.type = 'file';
+          fileInput.accept = 'image/jpeg,image/png,image/gif,image/webp';
+          fileInput.onchange = () => {
+            if (fileInput.files.length === 0) return;
+            var formData = new FormData();
+            formData.append('file', fileInput.files[0]);
+            fetch(`/api/sets/${set['id']}/media/hero`, {
+              method: 'POST',
+              body: formData
+            })
+            .then(response => response.json())
+            .then(data => {
+              if (data.error) {
+                alert('Upload failed: ' + data.error);
+              } else {
+                var heroContainer = document.getElementById(`hero-${set['id']}`);
+                heroContainer.innerHTML = `<img src="${data.url}" alt="Hero" style="max-width: 100%; max-height: 100px; border-radius: 4px;">`;
+              }
+            })
+            .catch(error => {
+              console.error('Error:', error);
+              alert('Upload failed');
+            });
+          };
+          fileInput.click();
+        };
+                
+        // Photos upload handler
+        photos_upload_btn.onclick = () => {
+          var fileInput = document.createElement('input');
+          fileInput.type = 'file';
+          fileInput.accept = 'image/jpeg,image/png,image/gif,image/webp';
+          fileInput.multiple = true;
+          fileInput.onchange = () => {
+            if (fileInput.files.length === 0) return;
+            var formData = new FormData();
+            for (var i = 0; i < fileInput.files.length; i++) {
+              formData.append('files', fileInput.files[i]);
+            }
+            fetch(`/api/sets/${set['id']}/media/photos`, {
+              method: 'POST',
+              body: formData
+            })
+            .then(response => response.json())
+            .then(data => {
+              if (data.errors && data.errors.length > 0) {
+                alert('Some uploads failed: ' + data.errors.join(', '));
+              }
+              if (data.uploaded && data.uploaded.length > 0) {
+                var photosContainer = document.getElementById(`photos-${set['id']}`);
+                if (photosContainer.innerHTML.includes('None')) {
+                  photosContainer.innerHTML = '';
+                }
+                data.uploaded.forEach(photo => {
+                  var photoDiv = document.createElement('div');
+                  photoDiv.className = 'mb-1';
+                  photoDiv.innerHTML = `<a href="${photo.url}" target="_blank" class="btn btn-xs btn-outline-info">📷 ${photo.filename}</a>`;
+                  photosContainer.appendChild(photoDiv);
+                });
+              }
+            })
+            .catch(error => {
+              console.error('Error:', error);
+              alert('Upload failed');
+            });
+          };
+          fileInput.click();
+        };
+                
+        // Videos upload handler
+        videos_upload_btn.onclick = () => {
+          var fileInput = document.createElement('input');
+          fileInput.type = 'file';
+          fileInput.accept = 'video/mp4,video/quicktime,video/x-msvideo,video/x-matroska,video/webm';
+          fileInput.multiple = true;
+          fileInput.onchange = () => {
+            if (fileInput.files.length === 0) return;
+            var formData = new FormData();
+            for (var i = 0; i < fileInput.files.length; i++) {
+              formData.append('files', fileInput.files[i]);
+            }
+            fetch(`/api/sets/${set['id']}/media/videos`, {
+              method: 'POST',
+              body: formData
+            })
+            .then(response => response.json())
+            .then(data => {
+              if (data.errors && data.errors.length > 0) {
+                alert('Some uploads failed: ' + data.errors.join(', '));
+              }
+              if (data.uploaded && data.uploaded.length > 0) {
+                var videosContainer = document.getElementById(`videos-${set['id']}`);
+                if (videosContainer.innerHTML.includes('None')) {
+                  videosContainer.innerHTML = '';
+                }
+                data.uploaded.forEach(video => {
+                  var videoDiv = document.createElement('div');
+                  videoDiv.className = 'mb-1';
+                  var sizeKB = Math.round(video.size_bytes / 1024);
+                  var sizeDisplay = sizeKB > 1024 ? 
+                    `${(sizeKB / 1024).toFixed(1)} MB` : 
+                    `${sizeKB} KB`;
+                  videoDiv.innerHTML = `<a href="${video.url}" target="_blank" class="btn btn-xs btn-outline-success">🎬 ${video.filename}</a> <small class="text-muted">${sizeDisplay}</small>`;
+                  videosContainer.appendChild(videoDiv);
+                });
+              }
+            })
+            .catch(error => {
+              console.error('Error:', error);
+              alert('Upload failed');
+            });
+          };
+          fileInput.click();
+        };
                 // Add a button to delete the set
                 var delete_button = document.createElement('button');
                 delete_button.className = 'btn btn-sm btn-danger';
@@ -220,7 +485,7 @@
                         set_div.remove();
                     });
                 };
-                card_body.appendChild(delete_button);
+                buttons_div.appendChild(delete_button);
                 set_div.appendChild(card_body);
                 sets_div.appendChild(set_div);
             });
@@ -256,9 +521,43 @@
                 title.className = 'card-title';
                 title.textContent = `${setName} (${setId})`;
                 card_body.appendChild(title);
+                
+                // Create two-column layout
+                var row_div = document.createElement('div');
+                row_div.className = 'row';
+                
+                // Left column: Instructions
+                var instructions_col = document.createElement('div');
+                instructions_col.className = 'col-md-4';
+                var instructions_heading = document.createElement('h6');
+                instructions_heading.textContent = 'Instructions';
+                instructions_heading.className = 'text-muted mb-2';
+                instructions_col.appendChild(instructions_heading);
                 var instructions_div = document.createElement('div');
                 instructions_div.className = 'mb-2';
-                card_body.appendChild(instructions_div);
+                instructions_col.appendChild(instructions_div);
+                row_div.appendChild(instructions_col);
+                
+                // Right column: Media (timelapses) for new set
+                var media_col = document.createElement('div');
+                media_col.className = 'col-md-6';
+                var media_heading = document.createElement('h6');
+                media_heading.textContent = 'Timelapse Videos';
+                media_heading.className = 'text-muted mb-2';
+                media_col.appendChild(media_heading);
+                var media_list = document.createElement('div');
+                media_list.id = `media-list-${setId}`;
+                media_list.innerHTML = '<small class="text-muted">No videos available</small>';
+                media_col.appendChild(media_list);
+                row_div.appendChild(media_col);
+                
+                card_body.appendChild(row_div);
+                
+                // Add action buttons below the columns
+                var buttons_div = document.createElement('div');
+                buttons_div.className = 'mt-3';
+                card_body.appendChild(buttons_div);
+                
                 // Add a button to add an instruction
                 var add_instruction_button = document.createElement('button');
                 add_instruction_button.className = 'btn btn-sm btn-primary mr-2';
@@ -300,7 +599,7 @@
                     };
                     file_input.click();
                 };
-                card_body.appendChild(add_instruction_button);
+                buttons_div.appendChild(add_instruction_button);
                 // Add a button to delete the set
                 var delete_button = document.createElement('button');
                 delete_button.className = 'btn btn-sm btn-danger';
@@ -312,7 +611,7 @@
                         set_div.remove();
                     });
                 };
-                card_body.appendChild(delete_button);
+                buttons_div.appendChild(delete_button);
                 set_div.appendChild(card_body);
                 sets_div.appendChild(set_div);
             }).catch(error => {
