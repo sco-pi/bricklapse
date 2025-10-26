@@ -8,9 +8,114 @@
   <link href="https://stackpath.bootstrapcdn.com/bootstrap/4.5.2/css/bootstrap.min.css" rel="stylesheet">
   <script src="https://mozilla.github.io/pdf.js/build/pdf.mjs" type="module"></script>
   <style>
+    /* Grid Layout */
+    .main-grid {
+      display: grid;
+      grid-template-columns: 1fr 5px 500px;
+      gap: 0;
+      height: calc(100vh - 100px);
+      padding: 10px;
+    }
+    
+    .pdf-column {
+      display: flex;
+      flex-direction: column;
+      gap: 15px;
+      min-height: 0;
+      margin-right: 10px;
+    }
+    
+    .resize-handle {
+      cursor: col-resize;
+      background: #dee2e6;
+      position: relative;
+      user-select: none;
+      transition: background 0.2s;
+    }
+    
+    .resize-handle:hover {
+      background: #adb5bd;
+    }
+    
+    .resize-handle::before {
+      content: '';
+      position: absolute;
+      top: 50%;
+      left: 50%;
+      transform: translate(-50%, -50%);
+      width: 3px;
+      height: 40px;
+      background: #6c757d;
+      border-radius: 2px;
+    }
+    
+    .camera-column {
+      display: flex;
+      flex-direction: column;
+      gap: 15px;
+      min-height: 0;
+      margin-left: 10px;
+    }
+    
+    .pdf-controls {
+      padding: 15px;
+      background: #f8f9fa;
+      border-radius: 5px;
+      border: 1px solid #dee2e6;
+      flex-shrink: 0;
+    }
+    
+    .pdf-viewer-container {
+      flex: 1;
+      overflow: auto;
+      border: 1px solid #dee2e6;
+      border-radius: 5px;
+      background: #e9ecef;
+      display: flex;
+      justify-content: center;
+      align-items: flex-start;
+      padding: 10px;
+      min-height: 0;
+    }
+    
+    .camera-controls {
+      padding: 15px;
+      background: #f8f9fa;
+      border-radius: 5px;
+      border: 1px solid #dee2e6;
+      overflow-y: auto;
+      flex-shrink: 0;
+    }
+    
+    .camera-preview {
+      flex: 1;
+      border: 1px solid #dee2e6;
+      border-radius: 5px;
+      background: #000;
+      display: flex;
+      justify-content: center;
+      align-items: center;
+      overflow: hidden;
+      position: relative;
+      min-height: 0;
+    }
+    
+    .camera-preview img {
+      max-width: 100%;
+      max-height: 100%;
+      object-fit: contain;
+    }
+    
+    #the-canvas {
+      max-width: 100%;
+      height: auto;
+      box-shadow: 0 2px 10px rgba(0,0,0,0.2);
+    }
+    
     #monitor-status {
       border-radius: 5px;
       box-shadow: 0 2px 5px rgba(0,0,0,0.1);
+      margin-top: 15px;
     }
     #monitor-status .card-header {
       background-color: #f8f9fa;
@@ -58,6 +163,16 @@
     .status-indicator.online {
       animation: pulse 2s infinite;
     }
+    
+    /* Responsive adjustments */
+    @media (max-width: 1200px) {
+      .main-grid {
+        grid-template-columns: 1fr;
+      }
+      .resize-handle {
+        display: none;
+      }
+    }
   </style>
 </head>
 <body>
@@ -68,60 +183,85 @@
       <h1><a href="/">Lego Timelapse</a> - Control</h1>
     </div>
   </div>
-  <div class="row">
-    <div class="col">
-      <div>
-        <!-- Drop Down for Set selection -->
-        Set <select id="set_select">
-          <option>Select Set</option>
-        </select>
-        <!-- Drop Down for Instrucion selection -->
-        Instruction <select id="instruction_select">
-          <option>Select set first</option>
-        </select>
-        <!-- Buttons for Previous, Next, and Instructions -->
-        <button id="prev">Previous</button>
-        <button id="next">Next</button>
-        &nbsp; &nbsp;
-        <button id="loadLast">Load Last</button>
-        &nbsp; &nbsp;
-        <button id="instructions_1">Instructions 1</button>
-        <button id="instructions_2">Instructions 2</button>
-        <button id="instructions_3">Instructions 3</button>
-        &nbsp; &nbsp;
-        <span>Page: <span id="page_num"></span> / <span id="page_count"></span></span>
-        &nbsp; &nbsp;
-        <a href="/viewer" target="_blank">Viewer</a>
-        <button id="hidePDF">Hide PDF</button>
+  
+  <div class="main-grid">
+    <!-- Left Column: PDF Section -->
+    <div class="pdf-column">
+      <!-- PDF Controls Section -->
+      <div class="pdf-controls">
+        <div class="mb-2">
+          <label for="set_select">Set:</label>
+          <select id="set_select" class="form-control form-control-sm d-inline-block" style="width: auto;">
+            <option>Select Set</option>
+          </select>
+          
+          <label for="instruction_select" class="ml-2">Instruction:</label>
+          <select id="instruction_select" class="form-control form-control-sm d-inline-block" style="width: auto;">
+            <option>Select set first</option>
+          </select>
+        </div>
+        
+        <div class="mb-2">
+          <button id="prev" class="btn btn-sm btn-primary">Previous</button>
+          <button id="next" class="btn btn-sm btn-primary">Next</button>
+          <button id="loadLast" class="btn btn-sm btn-secondary ml-2">Load Last</button>
+          <button id="instructions_1" class="btn btn-sm btn-info ml-2">Instructions 1</button>
+          <button id="instructions_2" class="btn btn-sm btn-info">Instructions 2</button>
+          <button id="instructions_3" class="btn btn-sm btn-info">Instructions 3</button>
+          <button id="hidePDF" class="btn btn-sm btn-warning ml-2">Hide PDF</button>
+        </div>
+        
+        <div>
+          <span>Page: <span id="page_num"></span> / <span id="page_count"></span></span>
+          <a href="/viewer" target="_blank" class="ml-3">Open Viewer</a>
+        </div>
+      </div>
+      
+      <!-- PDF Viewer Section -->
+      <div class="pdf-viewer-container">
+        <canvas id="the-canvas"></canvas>
       </div>
     </div>
-    <div class="col">
-      <div>
-        <label for="timelapse_interval">Timelapse Interval (ms)</label>
-        <input type="number" id="timelapse_interval" placeholder="Timelapse Interval" value="1000"/>
-        <!-- List for seleting camera sourced from /api/cameras -->
-        <label for="camera">Camera</label>
-        <select id="camera">
-          <option>Select Camera</option>
-        </select>
-        <!-- List for selecting phase, sorting, build, or dissasembly -->
-        <label for="phase">Phase</label>
-        <select id="phase">
-          <option value="sort">Sort</option>
-          <option value="build" selected="true">Build</option>
-          <option value="build1">Build Alternate 1</option>
-          <option value="build2">Build Alternate 2</option>
-          <option value="build3">Build Alternate 3</option>
-          <option value="installing_lights">Installing Lights</option>
-          <option value="disassemble">Disassemble</option>
-        </select>
-        <!-- Button to start timelapse -->
-        <button id="toggle_timelapse">Start</button>
-  &nbsp; &nbsp;
-  <button id="capture_toggle" class="btn btn-sm btn-outline-primary">Pause Capture</button>
+    
+    <!-- Resize Handle -->
+    <div class="resize-handle" id="resize-handle"></div>
+    
+    <!-- Right Column: Camera Section -->
+    <div class="camera-column">
+      <!-- Camera Controls Section -->
+      <div class="camera-controls">
+        <div class="form-group">
+          <label for="timelapse_interval">Timelapse Interval (ms)</label>
+          <input type="number" id="timelapse_interval" class="form-control form-control-sm" placeholder="Timelapse Interval" value="1000"/>
+        </div>
+        
+        <div class="form-group">
+          <label for="camera">Camera</label>
+          <select id="camera" class="form-control form-control-sm">
+            <option>Select Camera</option>
+          </select>
+        </div>
+        
+        <div class="form-group">
+          <label for="phase">Phase</label>
+          <select id="phase" class="form-control form-control-sm">
+            <option value="sort">Sort</option>
+            <option value="build" selected="true">Build</option>
+            <option value="build1">Build Alternate 1</option>
+            <option value="build2">Build Alternate 2</option>
+            <option value="build3">Build Alternate 3</option>
+            <option value="installing_lights">Installing Lights</option>
+            <option value="disassemble">Disassemble</option>
+          </select>
+        </div>
+        
+        <div class="mb-2">
+          <button id="toggle_timelapse" class="btn btn-sm btn-success">Start</button>
+          <button id="capture_toggle" class="btn btn-sm btn-outline-primary ml-2">Pause Capture</button>
+        </div>
         
         <!-- Camera Monitor Status Display -->
-        <div id="monitor-status" class="card mt-3">
+        <div id="monitor-status" class="card">
           <div class="card-header d-flex justify-content-between align-items-center">
             <span>Camera Monitor Status</span>
             <div>
@@ -129,19 +269,17 @@
               <span id="monitor-status-text">Offline</span>
             </div>
           </div>
-          <div class="card-body">
+          <div class="card-body" style="font-size: 0.85rem;">
             <div class="row">
-              <div class="col-6">
-                <p><strong>Status:</strong> <span id="monitor-running-status">Unknown</span></p>
-                <p><strong>Camera:</strong> <span id="monitor-camera-status">Unknown</span></p>
-                <p><strong>Set:</strong> <span id="monitor-set">Unknown</span></p>
-                <p><strong>Phase:</strong> <span id="monitor-phase">Unknown</span></p>
-              </div>
-              <div class="col-6">
-                <p><strong>Capture Count:</strong> <span id="monitor-count">0</span></p>
-                <p><strong>Last Capture:</strong> <span id="monitor-last-capture">Never</span></p>
-                <p><strong>Last Update:</strong> <span id="monitor-last-update">Never</span></p>
-                <p><strong>Method:</strong> <span id="monitor-backend">Unknown</span></p>
+              <div class="col-12">
+                <p class="mb-1"><strong>Status:</strong> <span id="monitor-running-status">Unknown</span></p>
+                <p class="mb-1"><strong>Camera:</strong> <span id="monitor-camera-status">Unknown</span></p>
+                <p class="mb-1"><strong>Set:</strong> <span id="monitor-set">Unknown</span></p>
+                <p class="mb-1"><strong>Phase:</strong> <span id="monitor-phase">Unknown</span></p>
+                <p class="mb-1"><strong>Capture Count:</strong> <span id="monitor-count">0</span></p>
+                <p class="mb-1"><strong>Last Capture:</strong> <span id="monitor-last-capture">Never</span></p>
+                <p class="mb-1"><strong>Last Update:</strong> <span id="monitor-last-update">Never</span></p>
+                <p class="mb-1"><strong>Method:</strong> <span id="monitor-backend">Unknown</span></p>
               </div>
             </div>
             <div class="row">
@@ -156,15 +294,12 @@
           </div>
         </div>
       </div>
-    </div>
-  </div>
-  <div class="row">
-    <div class="col">
-      <canvas id="the-canvas"></canvas>
-    </div>
-    <div class="col">
-      <div id="latest-timelapse">
-        <img width="640" src="/timelapse/42115/build/frame0011.jpg" />
+      
+      <!-- Camera Preview Section -->
+      <div class="camera-preview">
+        <div id="latest-timelapse">
+          <img width="640" src="/timelapse/42115/build/frame0011.jpg" />
+        </div>
       </div>
     </div>
   </div>
@@ -223,7 +358,19 @@
     pageRendering = true;
     // Using promise to fetch the page
     pdfDoc.getPage(num).then(function(page) {
-      var viewport = page.getViewport({scale: scale});
+      // Get the container dimensions
+      const container = document.querySelector('.pdf-viewer-container');
+      const containerWidth = container.clientWidth - 20; // Subtract padding
+      const containerHeight = container.clientHeight - 20;
+      
+      // Calculate scale to fit the container
+      var viewport = page.getViewport({scale: 1});
+      var scaleX = containerWidth / viewport.width;
+      var scaleY = containerHeight / viewport.height;
+      var calculatedScale = Math.min(scaleX, scaleY);
+      
+      // Use the calculated scale
+      viewport = page.getViewport({scale: calculatedScale});
       canvas.height = viewport.height;
       canvas.width = viewport.width;
 
@@ -459,28 +606,42 @@
 
   // Populate instruction dropdown when the page is loaded as function for reusability
   function populateInstructionDropdown(set_id){
-    var instructions = sets.find(set => set['id'] == set_id)['instructions'];
+    const setObj = sets.find(set => set['id'] == set_id);
+    if (!setObj){ return; }
+    var instructions = setObj['instructions'] || [];
     var instruction_select = document.getElementById('instruction_select');
     instruction_select.innerHTML = '';
-    // Add default option
+    // Add default option (will be replaced if auto-select triggers)
     var option = document.createElement('option');
     option.text = 'Select Instruction';
     instruction_select.appendChild(option);
     // Add all instructions for the selected set
     instructions.forEach(instruction => {
-      var option = document.createElement('option');
-      // Prefix the instruction with the index of the instruction
-      option.value = instruction;
-      option.text = (instructions.indexOf(instruction) + 1) + ' - ' + instruction;
-      instruction_select.appendChild(option);
+      var opt = document.createElement('option');
+      opt.value = instruction;
+      opt.text = (instructions.indexOf(instruction) + 1) + ' - ' + instruction;
+      instruction_select.appendChild(opt);
     });
+    // Auto-select and load the FIRST instruction if any exist.
+    if (instructions.length > 0) {
+      const first = instructions[0];
+      instruction_select.value = first;
+      url = '/instructions/' + set_id + '/' + first;
+      pageNum = 1;
+      pdfjsLib.getDocument(url).promise.then(function(pdfDoc_) {
+        pdfDoc = pdfDoc_;
+        document.getElementById('page_count').textContent = pdfDoc.numPages;
+        queueRenderPage(pageNum);
+      });
+      updatePage(pageNum, url);
+    }
   }
 
   // When a set is selected, update the list of instructions
   document.getElementById('set_select').addEventListener('change', (event) => {
     var set_id = event.target.value;
+    active_set = set_id; // ensure active_set set before dropdown logic
     populateInstructionDropdown(set_id);
-    active_set = set_id;
   });
 
   // When an instruction is selected, update the document and page number accordingly
@@ -840,7 +1001,7 @@
         document.getElementById('the-canvas').style.display = 'none';
       });
 
-  // Load the last document from the status endpoint
+    // Load the last document from the status endpoint
   document.getElementById('loadLast').addEventListener('click', () => {
     pdfjsLib.getDocument(url).promise.then(function(pdfDoc_) {
       pdfDoc = pdfDoc_;
@@ -854,6 +1015,88 @@
     document.getElementById('instruction_select').value = url.split('/')[3];
     active_set = url.split('/')[2];
   });
+
+    // Re-render PDF when window is resized to maintain proper scaling
+  let resizeTimeout;
+  window.addEventListener('resize', () => {
+    clearTimeout(resizeTimeout);
+    resizeTimeout = setTimeout(() => {
+      if (pdfDoc && pageNum) {
+        queueRenderPage(pageNum);
+      }
+    }, 250);
+  });
+
+  // Draggable resize handle functionality
+  (function() {
+    const resizeHandle = document.getElementById('resize-handle');
+    const mainGrid = document.querySelector('.main-grid');
+    const pdfColumn = document.querySelector('.pdf-column');
+    const cameraColumn = document.querySelector('.camera-column');
+    
+    let isResizing = false;
+    let startX = 0;
+    let startPdfWidth = 0;
+    let startCameraWidth = 0;
+    
+    resizeHandle.addEventListener('mousedown', (e) => {
+      isResizing = true;
+      startX = e.clientX;
+      
+      const gridRect = mainGrid.getBoundingClientRect();
+      const pdfRect = pdfColumn.getBoundingClientRect();
+      const cameraRect = cameraColumn.getBoundingClientRect();
+      
+      startPdfWidth = pdfRect.width;
+      startCameraWidth = cameraRect.width;
+      
+      document.body.style.cursor = 'col-resize';
+      document.body.style.userSelect = 'none';
+      
+      e.preventDefault();
+    });
+    
+    document.addEventListener('mousemove', (e) => {
+      if (!isResizing) return;
+      
+      const deltaX = e.clientX - startX;
+      const gridRect = mainGrid.getBoundingClientRect();
+      const totalWidth = gridRect.width - 5 - 20; // Subtract handle width and margins
+      
+      let newPdfWidth = startPdfWidth + deltaX;
+      let newCameraWidth = startCameraWidth - deltaX;
+      
+      // Set minimum widths
+      const minWidth = 300;
+      if (newPdfWidth < minWidth || newCameraWidth < minWidth) {
+        return;
+      }
+      
+      // Update grid template columns
+      mainGrid.style.gridTemplateColumns = `${newPdfWidth}px 5px ${newCameraWidth}px`;
+      
+      e.preventDefault();
+    });
+    
+    document.addEventListener('mouseup', () => {
+      if (isResizing) {
+        isResizing = false;
+        document.body.style.cursor = '';
+        document.body.style.userSelect = '';
+        
+        // Re-render PDF after resize
+        if (pdfDoc && pageNum) {
+          setTimeout(() => {
+            queueRenderPage(pageNum);
+          }, 100);
+        }
+      }
+    });
+  })();
+
+</script>
+</body>
+</html>
 
 </script>
 </body>
