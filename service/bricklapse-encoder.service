@@ -1,0 +1,16 @@
+[Unit]
+Description=Bricklapse Timelapse Encoder
+After=network.target bricklapse-server.service
+Requires=bricklapse-server.service
+
+[Service]
+Type=simple
+User=smurch
+ExecStart=/home/smurch/BrickLapsePython/service/start_encoder.sh
+Restart=always
+
+# Add a delay before starting (5 seconds)
+ExecStartPre=/bin/sleep 5
+
+[Install]
+WantedBy=multi-user.target
