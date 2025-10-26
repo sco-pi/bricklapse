@@ -8,6 +8,7 @@ import rel
 import json
 import threading
 import traceback
+import os
 
 API_HOST = '127.0.0.1:8000'
 BASE_DIR = '/mnt/legotimelapse'
@@ -149,9 +150,15 @@ def createTimelaspe(BasePath, FilePattern, FirstFile, OutputDir, OutputResX, Out
     stream = ffmpeg.overlay(stream, logo, x=logo_x_pos, y=overlay_dims['text_margin_y'])
     print(f"Logo positioned at x={logo_x_pos} y={overlay_dims['text_margin_y']}")
 
-    # TODO: Remove Temp from the filename
+    # Ensure output directory exists and write final file without -temp suffix
+    try:
+        os.makedirs(OutputDir, exist_ok=True)
+    except Exception as e:
+        print(f"[ENCODE][WARN] Could not create directory {OutputDir}: {e}")
+    output_filename = f'{SetNumber} - {SetName} - {Phase}.mp4'
+    full_output_path = os.path.join(OutputDir, output_filename)
     # No -s parameter needed; already scaled
-    stream = ffmpeg.output(stream, f'{OutputDir}/{SetNumber} - {SetName} - {Phase}-temp.mp4', c='libx264', crf=17, pix_fmt='yuv420p')
+    stream = ffmpeg.output(stream, full_output_path, c='libx264', crf=17, pix_fmt='yuv420p')
 
     try:
         print(f"[ENCODE] Starting ffmpeg for set {SetNumber} phase {Phase}")
@@ -210,7 +217,8 @@ def on_message(ws, message):
                 BasePath=f'{BASE_DIR}/captures/{encode_data["set_number"]}/{encode_data["phase"]}',
                 FilePattern="frame%05d.jpg",
                 FirstFile="frame00001.jpg",
-                OutputDir=BASE_DIR,
+                # Output per-set timelapse directory
+                OutputDir=f'{BASE_DIR}/media/{encode_data["set_number"]}/timelapse',
                 OutputResX=OUTPUT_RESOLUTION.split('x')[0],
                 OutputResY=OUTPUT_RESOLUTION.split('x')[1],
                 SetNumber=encode_data["set_number"],
