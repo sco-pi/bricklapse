@@ -257,17 +257,23 @@
       if (follow_ws_updates) {
         // If the update has a 'instructions' key, update the document
         if (data.instructions) {
+          // Check if page changed within same document
           if (data.instructions.page !== pageNum && data.instructions.document === url) {
             pageNum = data.instructions.page;
             queueRenderPage(pageNum);
           }
+          
+          // Check if document changed
           if (data.instructions.document !== url) {
             url = data.instructions.document;
+            pageNum = data.instructions.page;
+            
+            // Load and render the new document
             pdfjsLib.getDocument(url).promise.then(function(pdfDoc_) {
               pdfDoc = pdfDoc_;
               document.getElementById('page_count').textContent = pdfDoc.numPages;
+              queueRenderPage(pageNum);
             });
-            renderPage(pageNum);
           }
         }
       }

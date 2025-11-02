@@ -931,17 +931,41 @@
       // Update the document and page number if theres a page update and it's not from the current client
       if (data.instructions && data.client_id != client_id) {
         console.log('Received page update:', data);
+        
+        // Check if page changed within same document
         if (data.instructions.page !== pageNum && data.instructions.document === url) {
           pageNum = data.instructions.page;
           queueRenderPage(pageNum);
         }
+        
+        // Check if document changed
         if (data.instructions.document !== url) {
           url = data.instructions.document;
+          pageNum = data.instructions.page;
+          
+          // Parse set and instruction from document path
+          const docParts = url.split('/');
+          const newSet = docParts[2];
+          const newInstruction = docParts[3];
+          
+          // Update set dropdown if different
+          if (document.getElementById('set_select').value !== newSet) {
+            active_set = newSet;
+            document.getElementById('set_select').value = newSet;
+            populateInstructionDropdown(newSet);
+          }
+          
+          // Update instruction dropdown if different
+          if (document.getElementById('instruction_select').value !== newInstruction) {
+            document.getElementById('instruction_select').value = newInstruction;
+          }
+          
+          // Load and render the new document
           pdfjsLib.getDocument(url).promise.then(function(pdfDoc_) {
             pdfDoc = pdfDoc_;
             document.getElementById('page_count').textContent = pdfDoc.numPages;
+            queueRenderPage(pageNum);
           });
-          renderPage(pageNum);
         }
       }
     };

@@ -151,7 +151,7 @@
             var sets_div = document.getElementById('sets');
             sets.forEach(set => {
                 var set_div = document.createElement('div');
-                set_div.innerHTML = `<h2>${set['name']} (${set['id']})</h2>`;
+                //set_div.innerHTML = `<h2>${set['name']} (${set['id']})</h2>`;
                 set_div.className = 'card mb-3';
                 var card_body = document.createElement('div');
                 card_body.className = 'card-body';
@@ -160,7 +160,7 @@
                 title.textContent = `${set['name']} (${set['id']})`;
                 card_body.appendChild(title);
                 
-                // Create three-column layout (4 + 5 + 3 = 12)
+                // Create three-column layout (4 + 4 + 4 = 12)
                 var row_div = document.createElement('div');
                 row_div.className = 'row';
                 
@@ -179,11 +179,10 @@
                     instructions_div.appendChild(instruction_div);
                 });
                 instructions_col.appendChild(instructions_div);
-                row_div.appendChild(instructions_col);
                 
                 // Middle column: Timelapses / Photos / Videos
                 var media_col = document.createElement('div');
-                media_col.className = 'col-md-5';
+                media_col.className = 'col-md-4';
                 
                 // Timelapses section
                 var timelapse_heading = document.createElement('h6');
@@ -223,20 +222,22 @@
                 
                 // Right column: Hero image (standout)
                 var hero_col = document.createElement('div');
-                hero_col.className = 'col-md-3 d-flex flex-column';
+                hero_col.className = 'col-md-4 d-flex flex-column';
                 var hero_heading = document.createElement('h6');
                 hero_heading.textContent = 'Hero Image';
                 hero_heading.className = 'text-muted mb-2';
-                hero_col.appendChild(hero_heading);
+                //hero_col.appendChild(hero_heading);
                 var hero_container = document.createElement('div');
                 hero_container.id = `hero-${set['id']}`;
                 hero_container.className = 'border rounded p-1 bg-light d-flex align-items-center justify-content-center';
-                hero_container.style.minHeight = '110px';
+                hero_container.style.minHeight = '200px';
                 hero_container.innerHTML = '<small class="text-muted">Loading...</small>';
                 hero_col.appendChild(hero_container);
                 
-                row_div.appendChild(media_col);
+                // Build the row
                 row_div.appendChild(hero_col);
+                row_div.appendChild(instructions_col);
+                row_div.appendChild(media_col);
                 
                 card_body.appendChild(row_div);
                 
@@ -614,6 +615,9 @@
                 buttons_div.appendChild(delete_button);
                 set_div.appendChild(card_body);
                 sets_div.appendChild(set_div);
+
+                // TODO: Add button to start building the set that sets it as the active set, starting at the first instruction and navigates to the control page
+                // TODO: Add button to start encoding images for the set that takes you to the encoding page with the set set as the current set
             }).catch(error => {
                 console.error('Error:', error);
                 alert('Add set failed');

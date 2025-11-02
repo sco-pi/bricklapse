@@ -619,6 +619,119 @@ async def previous_page():
     await sendDocumentUpdate(last_page, last_document, "api")
     return {"page": last_page, "document": last_document}
 
+# API Endpoint to move to the next instruction (document)
+@app.post("/api/instruction/next")
+async def next_instruction():
+    global last_document, last_page, last_set
+    try:
+        # Load sets.yml and find current set
+        with open("sets.yml", "r") as f:
+            sets_data = yaml.safe_load(f)
+        current_set = None
+        for s in sets_data.get('sets', []):
+            if s.get('id') == last_set:
+                current_set = s
+                break
+        if not current_set:
+            return JSONResponse(status_code=404, content={"error": f"Set {last_set} not found"})
+        instructions = current_set.get('instructions', [])
+        if not instructions:
+            return JSONResponse(status_code=404, content={"error": f"No instructions for set {last_set}"})
+        # Parse current instruction number from last_document path
+        # Format expected: /instructions/<set_id>/<instruction_number>
+        parts = last_document.strip('/').split('/')
+        current_instruction_number = parts[-1] if len(parts) >= 3 else None
+        try:
+            idx = instructions.index(current_instruction_number) if current_instruction_number in instructions else -1
+        except ValueError:
+            idx = -1
+        # Advance index (wrap at end)
+        next_idx = (idx + 1) % len(instructions)
+        next_instruction_number = instructions[next_idx]
+        
+        # Only update if actually changing to a different instruction
+        if next_instruction_number == current_instruction_number:
+            # Single instruction or wrapped back to same one - no change
+            return {"page": last_page, "document": last_document, "instruction": current_instruction_number, "changed": False}
+        
+        last_document = f"/instructions/{last_set}/{next_instruction_number}"
+        last_page = 1  # reset page counter on instruction change
+        await sendDocumentUpdate(last_page, last_document, "api")
+        return {"page": last_page, "document": last_document, "instruction": next_instruction_number, "changed": True}
+    except Exception as e:
+        return JSONResponse(status_code=500, content={"error": f"Failed to move to next instruction: {e}"})
+
+# API Endpoint to move to the previous instruction (document)
+@app.post("/api/instruction/previous")
+async def previous_instruction():
+    global last_document, last_page, last_set
+    try:
+        with open("sets.yml", "r") as f:
+            sets_data = yaml.safe_load(f)
+        current_set = None
+        for s in sets_data.get('sets', []):
+            if s.get('id') == last_set:
+                current_set = s
+                break
+        if not current_set:
+            return JSONResponse(status_code=404, content={"error": f"Set {last_set} not found"})
+        instructions = current_set.get('instructions', [])
+        if not instructions:
+            return JSONResponse(status_code=404, content={"error": f"No instructions for set {last_set}"})
+        parts = last_document.strip('/').split('/')
+        current_instruction_number = parts[-1] if len(parts) >= 3 else None
+        try:
+            idx = instructions.index(current_instruction_number) if current_instruction_number in instructions else 0
+        except ValueError:
+            idx = 0
+        prev_idx = (idx - 1) % len(instructions)
+        prev_instruction_number = instructions[prev_idx]
+        
+        # Only update if actually changing to a different instruction
+        if prev_instruction_number == current_instruction_number:
+            # Single instruction or wrapped back to same one - no change
+            return {"page": last_page, "document": last_document, "instruction": current_instruction_number, "changed": False}
+        
+        last_document = f"/instructions/{last_set}/{prev_instruction_number}"
+        last_page = 1
+        await sendDocumentUpdate(last_page, last_document, "api")
+        return {"page": last_page, "document": last_document, "instruction": prev_instruction_number, "changed": True}
+    except Exception as e:
+        return JSONResponse(status_code=500, content={"error": f"Failed to move to previous instruction: {e}"})
+
+# API Endpoint to activate a set (changes current set and resets document/page)
+@app.post("/api/set/{set_id}/activate")
+async def activate_set(set_id: str):
+    global last_set, last_document, last_page
+    try:
+        with open("sets.yml", "r") as f:
+            sets_data = yaml.safe_load(f)
+        target = None
+        for s in sets_data.get('sets', []):
+            if s.get('id') == set_id:
+                target = s
+                break
+        if not target:
+            return JSONResponse(status_code=404, content={"error": f"Set {set_id} not found"})
+        instructions = target.get('instructions', [])
+        last_set = set_id
+        if instructions:
+            first_instruction = instructions[0]
+            last_document = f"/instructions/{set_id}/{first_instruction}"
+        else:
+            # No instructions, keep last_document pointing to previous or placeholder
+            last_document = f"/instructions/{set_id}/NONE"
+        last_page = 1
+        await sendDocumentUpdate(last_page, last_document, "api")
+        return {
+            "set": last_set,
+            "document": last_document,
+            "page": last_page,
+            "instructions_count": len(instructions)
+        }
+    except Exception as e:
+        return JSONResponse(status_code=500, content={"error": f"Failed to activate set: {e}"})
+
 @app.post("/api/capture-test-image")
 async def capture_test_image(request: Request):
     """Capture a test image using unified capture manager (methods: auto, picamera2, opencv, rpicam, raspistill)."""

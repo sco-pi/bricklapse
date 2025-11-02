@@ -1,0 +1,28 @@
+[Unit]
+Description=BrickLapse Keyboard Listener Service
+After=network.target bricklapse-server.service
+Wants=bricklapse-server.service
+
+[Service]
+Type=simple
+User=root
+Group=input
+WorkingDirectory=/home/smurch/BrickLapsePython
+ExecStart=/home/smurch/BrickLapsePython/service/start_keyboard.sh
+Restart=always
+RestartSec=10
+StandardOutput=journal
+StandardError=journal
+
+# Environment variables (customize as needed)
+Environment="BRICKLAPSE_SERVER_URL=http://localhost:8000"
+Environment="BRICKLAPSE_SETS_FILE=/home/smurch/BrickLapsePython/sets.yml"
+
+# Configured for EezBotFun MicroPad Keyboard (detected device)
+Environment="KEYBOARD_DEVICE_PATH=/dev/input/event4"
+# Alternative: use vendor/product ID filtering
+# Environment="KEYBOARD_VENDOR_ID=303a"
+# Environment="KEYBOARD_PRODUCT_ID=0012"
+
+[Install]
+WantedBy=multi-user.target
