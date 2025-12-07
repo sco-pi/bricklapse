@@ -158,12 +158,60 @@
     }
     
     .camera-controls {
-      padding: 15px;
       background: #f8f9fa;
       border-radius: 5px;
       border: 1px solid #dee2e6;
-      overflow-y: auto;
       flex-shrink: 0;
+    }
+    
+    .collapsible-header {
+      padding: 10px 15px;
+      background: #e9ecef;
+      cursor: pointer;
+      user-select: none;
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      border-bottom: 1px solid #dee2e6;
+    }
+    
+    .collapsible-header:hover {
+      background: #dee2e6;
+    }
+    
+    .collapsible-header.with-status {
+      border-bottom: none;
+    }
+    
+    .collapsible-header.with-status.has-content {
+      border-bottom: 1px solid #dee2e6;
+    }
+    
+    .collapsible-title {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+    }
+    
+    .collapsible-content {
+      padding: 15px;
+      max-height: 400px;
+      overflow-y: auto;
+      transition: max-height 0.3s ease;
+    }
+    
+    .collapsible-content.collapsed {
+      max-height: 0;
+      padding: 0 15px;
+      overflow: hidden;
+    }
+    
+    .collapse-icon {
+      transition: transform 0.3s ease;
+    }
+    
+    .collapse-icon.collapsed {
+      transform: rotate(-90deg);
     }
     
     .camera-preview {
@@ -179,9 +227,19 @@
       min-height: 0;
     }
     
+    #latest-timelapse {
+      width: 100%;
+      height: 100%;
+      display: flex;
+      justify-content: center;
+      align-items: center;
+    }
+    
     .camera-preview img {
       max-width: 100%;
       max-height: 100%;
+      width: auto;
+      height: auto;
       object-fit: contain;
     }
     
@@ -192,13 +250,17 @@
     }
     
     #monitor-status {
-      border-radius: 5px;
-      box-shadow: 0 2px 5px rgba(0,0,0,0.1);
-      margin-top: 15px;
+      border-radius: 0;
+      box-shadow: none;
+      margin-top: 0;
+      border: none;
     }
     #monitor-status .card-header {
-      background-color: #f8f9fa;
-      font-weight: bold;
+      display: none;
+    }
+    #monitor-status .card-body {
+      background-color: #fff;
+      border-radius: 0 0 5px 5px;
     }
     .text-success {
       color: #28a745;
@@ -333,64 +395,75 @@
     <div class="camera-column">
       <!-- Camera Controls Section -->
       <div class="camera-controls">
-        <div class="form-group">
-          <label for="timelapse_interval">Timelapse Interval (ms)</label>
-          <input type="number" id="timelapse_interval" class="form-control form-control-sm" placeholder="Timelapse Interval" value="1000"/>
+        <div class="collapsible-header" id="settings-header">
+          <strong>Timelapse Settings</strong>
+          <span class="collapse-icon">▼</span>
         </div>
-        
-        <div class="form-group">
-          <label for="camera">Camera</label>
-          <select id="camera" class="form-control form-control-sm">
-            <option>Select Camera</option>
-          </select>
-        </div>
-        
-        <div class="form-group">
-          <label for="phase">Phase</label>
-          <select id="phase" class="form-control form-control-sm">
-            <option value="sort">Sort</option>
-            <option value="build" selected="true">Build</option>
-            <option value="build1">Build Alternate 1</option>
-            <option value="build2">Build Alternate 2</option>
-            <option value="build3">Build Alternate 3</option>
-            <option value="installing_lights">Installing Lights</option>
-            <option value="disassemble">Disassemble</option>
-          </select>
-        </div>
-        
-        <div class="mb-2">
-          <button id="toggle_timelapse" class="btn btn-sm btn-success">Start</button>
-          <button id="capture_toggle" class="btn btn-sm btn-outline-primary ml-2">Pause Capture</button>
+        <div class="collapsible-content" id="settings-content">
+          <div class="form-group">
+            <label for="timelapse_interval">Timelapse Interval (ms)</label>
+            <input type="number" id="timelapse_interval" class="form-control form-control-sm" placeholder="Timelapse Interval" value="1000"/>
+          </div>
+          
+          <div class="form-group">
+            <label for="camera">Camera</label>
+            <select id="camera" class="form-control form-control-sm">
+              <option>Select Camera</option>
+            </select>
+          </div>
+          
+          <div class="form-group">
+            <label for="phase">Phase</label>
+            <select id="phase" class="form-control form-control-sm">
+              <option value="sort">Sort</option>
+              <option value="build" selected="true">Build</option>
+              <option value="build1">Build Alternate 1</option>
+              <option value="build2">Build Alternate 2</option>
+              <option value="build3">Build Alternate 3</option>
+              <option value="installing_lights">Installing Lights</option>
+              <option value="disassemble">Disassemble</option>
+            </select>
+          </div>
+          
+          <div class="mb-2">
+            <button id="toggle_timelapse" class="btn btn-sm btn-success">Start</button>
+            <button id="capture_toggle" class="btn btn-sm btn-outline-primary ml-2">Pause Capture</button>
+          </div>
         </div>
         
         <!-- Camera Monitor Status Display -->
-        <div id="monitor-status" class="card">
-          <div class="card-header d-flex justify-content-between align-items-center">
-            <span>Camera Monitor Status</span>
+        <div class="collapsible-header with-status" id="status-header" style="border-top: 1px solid #dee2e6;">
+          <div class="collapsible-title">
+            <strong>Camera Monitor Status</strong>
             <div>
               <span class="status-indicator offline" id="monitor-status-indicator"></span>
               <span id="monitor-status-text">Offline</span>
             </div>
           </div>
-          <div class="card-body" style="font-size: 0.85rem;">
-            <div class="row">
-              <div class="col-12">
-                <p class="mb-1"><strong>Status:</strong> <span id="monitor-running-status">Unknown</span></p>
-                <p class="mb-1"><strong>Camera:</strong> <span id="monitor-camera-status">Unknown</span></p>
-                <p class="mb-1"><strong>Set:</strong> <span id="monitor-set">Unknown</span></p>
-                <p class="mb-1"><strong>Phase:</strong> <span id="monitor-phase">Unknown</span></p>
-                <p class="mb-1"><strong>Capture Count:</strong> <span id="monitor-count">0</span></p>
-                <p class="mb-1"><strong>Last Capture:</strong> <span id="monitor-last-capture">Never</span></p>
-                <p class="mb-1"><strong>Last Update:</strong> <span id="monitor-last-update">Never</span></p>
-                <p class="mb-1"><strong>Method:</strong> <span id="monitor-backend">Unknown</span></p>
+          <span class="collapse-icon">▼</span>
+        </div>
+        <div class="collapsible-content" id="status-content">
+          <div id="monitor-status" class="card">
+            <div class="card-body" style="font-size: 0.85rem;">
+              <div class="row">
+                <div class="col-12">
+                  <p class="mb-1"><strong>Status:</strong> <span id="monitor-running-status">Unknown</span></p>
+                  <p class="mb-1"><strong>Camera:</strong> <span id="monitor-camera-status">Unknown</span></p>
+                  <p class="mb-1"><strong>Set:</strong> <span id="monitor-set">Unknown</span></p>
+                  <p class="mb-1"><strong>Phase:</strong> <span id="monitor-phase">Unknown</span></p>
+                  <p class="mb-1"><strong>Capture Count:</strong> <span id="monitor-count">0</span></p>
+                  <p class="mb-1"><strong>Last Capture:</strong> <span id="monitor-last-capture">Never</span></p>
+                  <p class="mb-1"><strong>Last Update:</strong> <span id="monitor-last-update">Never</span></p>
+                  <p class="mb-1"><strong>Method:</strong> <span id="monitor-backend">Unknown</span></p>
+                </div>
               </div>
-            </div>
-            <div class="row">
-              <div class="col-12">
-                <div class="alert alert-danger mt-2 d-none" id="monitor-errors">
-                  <strong>Errors:</strong>
-                  <ul id="monitor-error-list">
-                  </ul>
+              <div class="row">
+                <div class="col-12">
+                  <div class="alert alert-danger mt-2 d-none" id="monitor-errors">
+                    <strong>Errors:</strong>
+                    <ul id="monitor-error-list">
+                    </ul>
+                  </div>
                 </div>
               </div>
             </div>
@@ -1235,6 +1308,47 @@
     overlay.addEventListener('click', () => {
       sidebar.classList.remove('open');
       overlay.classList.remove('show');
+    });
+  })();
+
+  // Collapsible sections functionality
+  (function() {
+    // Settings collapsible
+    const settingsHeader = document.getElementById('settings-header');
+    const settingsContent = document.getElementById('settings-content');
+    const settingsIcon = settingsHeader.querySelector('.collapse-icon');
+    
+    settingsHeader.addEventListener('click', () => {
+      settingsContent.classList.toggle('collapsed');
+      settingsIcon.classList.toggle('collapsed');
+      
+      // Update border on status header when settings is collapsed
+      const statusHeader = document.getElementById('status-header');
+      if (settingsContent.classList.contains('collapsed')) {
+        statusHeader.classList.remove('has-content');
+      } else {
+        statusHeader.classList.add('has-content');
+      }
+    });
+    
+    // Status collapsible
+    const statusHeader = document.getElementById('status-header');
+    const statusContent = document.getElementById('status-content');
+    const statusIcon = statusHeader.querySelector('.collapse-icon');
+    
+    // Initialize with content showing
+    statusHeader.classList.add('has-content');
+    
+    statusHeader.addEventListener('click', () => {
+      statusContent.classList.toggle('collapsed');
+      statusIcon.classList.toggle('collapsed');
+      
+      // Update border based on collapsed state
+      if (statusContent.classList.contains('collapsed')) {
+        statusHeader.classList.remove('has-content');
+      } else {
+        statusHeader.classList.add('has-content');
+      }
     });
   })();
 
