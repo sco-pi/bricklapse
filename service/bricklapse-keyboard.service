@@ -18,9 +18,9 @@ StandardError=journal
 Environment="BRICKLAPSE_SERVER_URL=http://localhost:8000"
 Environment="BRICKLAPSE_SETS_FILE=/home/smurch/BrickLapsePython/sets.yml"
 
-# Configured for EezBotFun MicroPad Keyboard (detected device)
-Environment="KEYBOARD_DEVICE_PATH=/dev/input/event4"
-# Alternative: use vendor/product ID filtering
+# Device selection: By default, automatically finds device with all required media keys
+# Optional: Override with specific device path or vendor/product ID if needed
+# Environment="KEYBOARD_DEVICE_PATH=/dev/input/event0"
 # Environment="KEYBOARD_VENDOR_ID=303a"
 # Environment="KEYBOARD_PRODUCT_ID=0012"
 

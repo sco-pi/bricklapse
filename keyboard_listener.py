@@ -58,14 +58,17 @@ class BrickLapseKeyboardController:
             self.sets_data = {'sets': []}
     
     def find_keyboard_device(self) -> Optional[InputDevice]:
-        """Find the HID keyboard device.
+        """Find the HID keyboard device with media key support.
 
         Selection strategy:
         1. If KEYBOARD_DEVICE_PATH provided, use it (warn if missing media keys)
-        2. Build list of candidates with EV_KEY capability
-        3. Prefer devices that include ALL required media keys (next, previous, vol up, vol down)
-        4. If none have all, pick one with at least some and log which are missing
-        5. Fallback to first EV_KEY device.
+        2. If KEYBOARD_VENDOR_ID/PRODUCT_ID provided, filter by those
+        3. Build list of candidates with EV_KEY capability
+        4. **Prefer devices with ALL required media keys** (next, previous, vol up, vol down)
+        5. If none have all, pick one with most media keys and warn about missing keys
+        6. Fallback to first EV_KEY device if no media keys found
+        
+        This automatic detection makes the service resilient to device enumeration changes.
         """
         required_media_keys = {
             ecodes.KEY_NEXTSONG: "NEXTSONG",

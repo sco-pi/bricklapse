@@ -44,6 +44,7 @@ watchfiles==0.23.0
 websocket-client==1.8.0
 zope.event==5.0
 zope.interface==7.0.3
+evdev==1.6.1
 
 pillow
 picamera2
