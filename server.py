@@ -9,6 +9,7 @@ import shutil
 import os
 import json
 import time
+import re
 import gphoto2 as gp
 import subprocess
 import cv2
@@ -38,6 +39,7 @@ last_page = 1
 last_document = "/instructions/42158/6501852" # Defaults to the Mars Rover set, need to find a better way to default
 last_set = "42158"
 last_phase = "build"
+DOCUMENT_PATH_RE = re.compile(r"^/instructions/[^/]+/[^/]+$")
 
 # Camera monitor status tracking
 camera_monitor_status = {
@@ -75,7 +77,18 @@ manager = ConnectionManager()
 
 # Function for sending updates to the websocket on page/document changes
 async def sendDocumentUpdate(page, document, client_id):
-    await manager.broadcast(f'{{"instructions": {{"page": {page}, "document": "{document}"}}, "client_id": "{client_id}"}}')
+    payload = {
+        "instructions": {
+            "page": page,
+            "document": document,
+        },
+        "client_id": str(client_id),
+    }
+    await manager.broadcast(json.dumps(payload))
+
+
+def is_valid_document_path(document: Optional[str]) -> bool:
+    return isinstance(document, str) and bool(DOCUMENT_PATH_RE.fullmatch(document.strip()))
 
 @app.get("/favicon.ico", include_in_schema=False)
 async def get_favicon():
@@ -457,7 +470,9 @@ async def upload_videos(set_id: str, files: List[UploadFile] = File(...)):
 # Get current page and instruction number as status
 @app.get("/api/status")
 async def get():
-    return {"page": last_page, "document": last_document, "set": last_set, "phase": last_phase}
+    safe_document = last_document if is_valid_document_path(last_document) else "/instructions/42158/6501852"
+    safe_page = last_page if isinstance(last_page, int) and last_page > 0 else 1
+    return {"page": safe_page, "document": safe_document, "set": last_set, "phase": last_phase}
 
 # Get camera monitor status
 @app.get("/api/monitor/status")
@@ -520,10 +535,28 @@ async def update(request: Request):
 
         instructiondata = data["instructions"]
 
-        last_page = instructiondata["page"]
-        last_document = instructiondata["document"]
-        last_set = instructiondata["set"]
-        last_phase = instructiondata["phase"]
+        incoming_document = instructiondata.get("document")
+        if not is_valid_document_path(incoming_document):
+            return JSONResponse(
+                status_code=400,
+                content={"error": "Invalid instructions.document path"}
+            )
+
+        incoming_page = instructiondata.get("page", 1)
+        try:
+            parsed_page = int(incoming_page)
+            if parsed_page < 1:
+                parsed_page = 1
+        except (TypeError, ValueError):
+            parsed_page = 1
+
+        doc_parts = incoming_document.strip().split("/")
+        parsed_set = doc_parts[2] if len(doc_parts) > 3 else last_set
+
+        last_page = parsed_page
+        last_document = incoming_document.strip()
+        last_set = instructiondata.get("set") or parsed_set
+        last_phase = instructiondata.get("phase") or last_phase
 
         # Send update to all connected clients as JSON
         await sendDocumentUpdate(last_page, last_document, client_id)

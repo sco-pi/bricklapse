@@ -143,6 +143,55 @@
   var url = '/instructions/42158/6501852',
       pageNum = 1;
 
+  function parsePositivePage(pageValue, fallback = 1) {
+    const parsed = Number.parseInt(pageValue, 10);
+    return Number.isFinite(parsed) && parsed > 0 ? parsed : fallback;
+  }
+
+  function isSafePathSegment(segment) {
+    // Allow common instruction/set id characters and spaces.
+    return /^[A-Za-z0-9._()\-% ]+$/.test(segment);
+  }
+
+  function normalizeDocumentUrl(docUrl) {
+    if (typeof docUrl !== 'string') {
+      return null;
+    }
+
+    const trimmed = docUrl.trim();
+    if (trimmed === '') {
+      return null;
+    }
+
+    const parts = trimmed.split('/');
+    if (parts.length !== 4 || parts[0] !== '' || parts[1] !== 'instructions') {
+      return null;
+    }
+
+    let setId;
+    let instructionId;
+    try {
+      setId = decodeURIComponent(parts[2]).trim();
+      instructionId = decodeURIComponent(parts[3]).trim();
+    } catch (_error) {
+      return null;
+    }
+
+    if (!setId || !instructionId) {
+      return null;
+    }
+
+    if (!isSafePathSegment(setId) || !isSafePathSegment(instructionId)) {
+      return null;
+    }
+
+    return '/instructions/' + encodeURIComponent(setId) + '/' + encodeURIComponent(instructionId);
+  }
+
+  function isValidDocumentUrl(docUrl) {
+    return normalizeDocumentUrl(docUrl) !== null;
+  }
+
   // Get starting page/doc from /api/status endpoint
     await fetch('/api/status')
         .then(response => {
@@ -152,8 +201,11 @@
         return response.json();
         })
         .then(data => {
-        url = data['document'];
-        pageNum = data['page'];
+        const normalizedStatusUrl = normalizeDocumentUrl(data['document']);
+        if (normalizedStatusUrl) {
+          url = normalizedStatusUrl;
+        }
+        pageNum = parsePositivePage(data['page'], pageNum);
         })
         .catch(error => {
         console.error('Error:', error);
@@ -219,16 +271,29 @@
     }
   }
 
+  function loadPdfDocument(docUrl, targetPage) {
+    const normalizedUrl = normalizeDocumentUrl(docUrl);
+    if (!normalizedUrl) {
+      console.warn('Skipping PDF load due to invalid URL:', docUrl);
+      return;
+    }
+
+    url = normalizedUrl;
+    pageNum = parsePositivePage(targetPage, 1);
+
+    pdfjsLib.getDocument({url: url}).promise.then(function(pdfDoc_) {
+      pdfDoc = pdfDoc_;
+      document.getElementById('page_count').textContent = pdfDoc.numPages;
+      queueRenderPage(pageNum);
+    }).catch(function(error) {
+      console.error('Failed to load PDF document:', error);
+    });
+  }
+
   /**
    * Asynchronously downloads PDF.
    */
-  pdfjsLib.getDocument(url).promise.then(function(pdfDoc_) {
-    pdfDoc = pdfDoc_;
-    document.getElementById('page_count').textContent = pdfDoc.numPages;
-
-    // Initial/first page rendering
-    renderPage(pageNum);
-  });
+  loadPdfDocument(url, pageNum);
 
   var follow_ws_updates = false;
 
@@ -257,23 +322,18 @@
       if (follow_ws_updates) {
         // If the update has a 'instructions' key, update the document
         if (data.instructions) {
+          const incomingDocument = normalizeDocumentUrl(data.instructions.document);
+          const incomingPage = parsePositivePage(data.instructions.page, pageNum);
+
           // Check if page changed within same document
-          if (data.instructions.page !== pageNum && data.instructions.document === url) {
-            pageNum = data.instructions.page;
+          if (incomingPage !== pageNum && incomingDocument && incomingDocument === url) {
+            pageNum = incomingPage;
             queueRenderPage(pageNum);
           }
           
           // Check if document changed
-          if (data.instructions.document !== url) {
-            url = data.instructions.document;
-            pageNum = data.instructions.page;
-            
-            // Load and render the new document
-            pdfjsLib.getDocument(url).promise.then(function(pdfDoc_) {
-              pdfDoc = pdfDoc_;
-              document.getElementById('page_count').textContent = pdfDoc.numPages;
-              queueRenderPage(pageNum);
-            });
+          if (incomingDocument && incomingDocument !== url) {
+            loadPdfDocument(incomingDocument, incomingPage);
           }
         }
       }

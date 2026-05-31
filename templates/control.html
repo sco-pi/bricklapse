@@ -496,6 +496,19 @@
       last_timelapse_timestamp = null,
       timelapse_running = false;
 
+  function isValidDocumentUrl(docUrl) {
+    if (typeof docUrl !== 'string') {
+      return false;
+    }
+
+    const trimmed = docUrl.trim();
+    if (trimmed === '') {
+      return false;
+    }
+
+    return /^\/instructions\/[^/]+\/[^/]+$/.test(trimmed);
+  }
+
 // Get starting page/doc from /api/status endpoint
   await fetch('/api/status')
       .then(response => {
@@ -505,8 +518,12 @@
       return response.json();
       })
       .then(data => {
-      url = data['document'];
-      pageNum = data['page'];
+      if (isValidDocumentUrl(data['document'])) {
+        url = data['document'];
+      }
+      if (Number.isFinite(data['page']) && data['page'] > 0) {
+        pageNum = data['page'];
+      }
       })
       .catch(error => {
       console.error('Error:', error);
@@ -582,6 +599,28 @@
     } else {
       renderPage(num);
     }
+  }
+
+  function loadPdfDocument(docUrl, targetPage) {
+    if (!isValidDocumentUrl(docUrl)) {
+      console.warn('Skipping PDF load due to invalid URL:', docUrl);
+      return;
+    }
+
+    url = docUrl.trim();
+    if (Number.isFinite(targetPage) && targetPage > 0) {
+      pageNum = targetPage;
+    } else {
+      pageNum = 1;
+    }
+
+    pdfjsLib.getDocument({url: url}).promise.then(function(pdfDoc_) {
+      pdfDoc = pdfDoc_;
+      document.getElementById('page_count').textContent = pdfDoc.numPages;
+      queueRenderPage(pageNum);
+    }).catch(function(error) {
+      console.error('Failed to load PDF document:', error);
+    });
   }
 
   /**
@@ -725,14 +764,8 @@
 
   function setInstructionsForSet(active_set,instructions_index){
     var instruction = sets.find(set => set['id'] == active_set)['instructions'][instructions_index];
-    url = '/instructions/' + active_set + '/' + instruction;
-    pageNum = 1;
-    pdfjsLib.getDocument(url).promise.then(function(pdfDoc_) {
-      pdfDoc = pdfDoc_;
-      document.getElementById('page_count').textContent = pdfDoc.numPages;
-      pageNum = 1;
-      queueRenderPage(pageNum);
-    });
+    const nextUrl = '/instructions/' + active_set + '/' + instruction;
+    loadPdfDocument(nextUrl, 1);
     updatePage(pageNum, url);
   }
 
@@ -766,13 +799,8 @@
           }
           // If we have both set and instruction, load the PDF
           if (lastInstruction) {
-            url = '/instructions/' + statusData.set + '/' + lastInstruction;
-            pageNum = statusData.page || 1;
-            pdfjsLib.getDocument(url).promise.then(function(pdfDoc_) {
-              pdfDoc = pdfDoc_;
-              document.getElementById('page_count').textContent = pdfDoc.numPages;
-              queueRenderPage(pageNum);
-            });
+            const lastUrl = '/instructions/' + statusData.set + '/' + lastInstruction;
+            loadPdfDocument(lastUrl, statusData.page || 1);
             updatePage(pageNum, url);
           }
         }
@@ -784,11 +812,14 @@
   function populateInstructionDropdown(set_id){
     const setObj = sets.find(set => set['id'] == set_id);
     if (!setObj){ return; }
-    var instructions = setObj['instructions'] || [];
+    var instructions = (setObj['instructions'] || [])
+      .map(instruction => String(instruction || '').trim())
+      .filter(instruction => instruction !== '');
     var instruction_select = document.getElementById('instruction_select');
     instruction_select.innerHTML = '';
     // Add default option (will be replaced if auto-select triggers)
     var option = document.createElement('option');
+    option.value = '';
     option.text = 'Select Instruction';
     instruction_select.appendChild(option);
     // Add all instructions for the selected set
@@ -802,13 +833,8 @@
     if (instructions.length > 0) {
       const first = instructions[0];
       instruction_select.value = first;
-      url = '/instructions/' + set_id + '/' + first;
-      pageNum = 1;
-      pdfjsLib.getDocument(url).promise.then(function(pdfDoc_) {
-        pdfDoc = pdfDoc_;
-        document.getElementById('page_count').textContent = pdfDoc.numPages;
-        queueRenderPage(pageNum);
-      });
+      const firstUrl = '/instructions/' + set_id + '/' + first;
+      loadPdfDocument(firstUrl, 1);
       updatePage(pageNum, url);
     }
   }
@@ -823,15 +849,13 @@
   // When an instruction is selected, update the document and page number accordingly
   document.getElementById('instruction_select').addEventListener('change', (event) => {
     var instruction = event.target.value;
+    if (!instruction) {
+      return;
+    }
+
     var set_id = document.getElementById('set_select').value;
-    url = '/instructions/' + set_id + '/' + instruction;
-    pageNum = 1;
-    pdfjsLib.getDocument(url).promise.then(function(pdfDoc_) {
-      pdfDoc = pdfDoc_;
-      document.getElementById('page_count').textContent = pdfDoc.numPages;
-      pageNum = 1;
-      queueRenderPage(pageNum);
-    });
+    const selectedUrl = '/instructions/' + set_id + '/' + instruction;
+    loadPdfDocument(selectedUrl, 1);
     updatePage(pageNum, url);
   });
 
@@ -1012,12 +1036,12 @@
         }
         
         // Check if document changed
-        if (data.instructions.document !== url) {
-          url = data.instructions.document;
-          pageNum = data.instructions.page;
+        if (isValidDocumentUrl(data.instructions.document) && data.instructions.document !== url) {
+          const incomingDocument = data.instructions.document;
+          const incomingPage = data.instructions.page;
           
           // Parse set and instruction from document path
-          const docParts = url.split('/');
+          const docParts = incomingDocument.split('/');
           const newSet = docParts[2];
           const newInstruction = docParts[3];
           
@@ -1034,11 +1058,7 @@
           }
           
           // Load and render the new document
-          pdfjsLib.getDocument(url).promise.then(function(pdfDoc_) {
-            pdfDoc = pdfDoc_;
-            document.getElementById('page_count').textContent = pdfDoc.numPages;
-            queueRenderPage(pageNum);
-          });
+          loadPdfDocument(incomingDocument, incomingPage);
         }
       }
     };
@@ -1203,12 +1223,12 @@
 
     // Load the last document from the status endpoint
   document.getElementById('loadLast').addEventListener('click', () => {
-    pdfjsLib.getDocument(url).promise.then(function(pdfDoc_) {
-      pdfDoc = pdfDoc_;
-      document.getElementById('page_count').textContent = pdfDoc.numPages;
-      queueRenderPage(pageNum);
-    });
+    loadPdfDocument(url, pageNum);
     // Set the dropdowns to the last set and instruction
+    if (!isValidDocumentUrl(url)) {
+      return;
+    }
+
     document.getElementById('set_select').value = url.split('/')[2];
     // Populate the instruction dropdown
     populateInstructionDropdown(url.split('/')[2]);
@@ -1354,9 +1374,5 @@
 
 </script>
 </div>
-</body>
-</html>
-
-</script>
 </body>
 </html>
